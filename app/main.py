@@ -304,7 +304,30 @@ def settings_view() -> dict[str, Any]:
 @app.post("/api/v1/demo/reset")
 def reset_demo() -> dict[str, str]:
     with db() as conn:
-        for table in ("reviews", "fact_memberships", "fact_versions", "claim_evidence", "claim_interpretations", "changes", "relationships", "facts", "claims_fts", "claims", "evidence_anchors", "page_artifacts", "documents", "run_events", "runs"):
+        for table in (
+            "reviews",
+            "fact_memberships",
+            "fact_versions",
+            "claim_evidence",
+            "claim_interpretations",
+            "changes",
+            "relationships",
+            "facts",
+            "claims_fts",
+            "claims",
+            "evidence_anchors",
+            "page_artifacts",
+            "documents",
+            "run_events",
+            "runs",
+            "entity_aliases",
+            "predicate_aliases",
+            "registry_decisions",
+            "entities",
+            "predicates",
+            "embeddings",
+            "embedding_spaces",
+        ):
             conn.execute(f"DELETE FROM {table}")
         conn.execute("UPDATE workspaces SET active_revision=1")
     seed_demo()

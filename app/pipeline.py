@@ -24,7 +24,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
     """Process an uploaded PDF with resumable stage updates and deterministic fallback."""
     try:
         started_at = utc_now()
-        _update_run(run_id, 5, "Parsing PDF pages")
+        _update_run(run_id, 5, "Parsing PDF pages", status="processing")
         parsed = parse_pdf(data)
         if len(parsed.pages) > settings.max_pdf_pages:
             raise ValueError(f"PDF exceeds the {settings.max_pdf_pages}-page limit")
