@@ -279,6 +279,17 @@ CREATE TABLE IF NOT EXISTS model_calls (
   latency_ms INTEGER,
   created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_model_calls_fingerprint ON model_calls(role, model, input_hash, status);
+CREATE TABLE IF NOT EXISTS model_cache (
+  id TEXT PRIMARY KEY,
+  role TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_hash TEXT NOT NULL,
+  response_json TEXT NOT NULL,
+  estimated_cost REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  UNIQUE(role, model, input_hash)
+);
 CREATE TABLE IF NOT EXISTS budget_ledger (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   limit_usd REAL NOT NULL,
@@ -362,10 +373,28 @@ def db() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with db() as conn:
         conn.executescript(SCHEMA)
+        _ensure_columns(conn)
         conn.execute(
             "INSERT OR IGNORE INTO budget_ledger(id, limit_usd, updated_at) VALUES(1, ?, ?)",
             (settings.ai_budget_usd, utc_now()),
         )
+
+
+def _ensure_columns(conn: sqlite3.Connection) -> None:
+    """Add small telemetry columns when a pre-upgrade local DB is reused."""
+
+    additions = {
+        "model_calls": {
+            "reserved_usd": "REAL NOT NULL DEFAULT 0",
+            "cache_hit": "INTEGER NOT NULL DEFAULT 0",
+        },
+        "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'"},
+    }
+    for table, columns in additions.items():
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for name, definition in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:

@@ -58,11 +58,15 @@ def _post(path: str, payload: dict[str, Any], model: str) -> ProviderResult:
         parsed = json.loads(content)
     except (TypeError, json.JSONDecodeError):
         parsed = content
+    input_tokens = usage.get("prompt_tokens")
+    output_tokens = usage.get("completion_tokens")
+    estimated_cost = ((input_tokens or max(1, len(body) // 4)) / 1_000_000) * settings.ai_input_price_per_million + ((output_tokens or 1200) / 1_000_000) * settings.ai_output_price_per_million
     return ProviderResult(
         data=parsed,
         model=model,
-        input_tokens=usage.get("prompt_tokens"),
-        output_tokens=usage.get("completion_tokens"),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        estimated_cost=round(estimated_cost, 6),
         latency_ms=elapsed,
     )
 
@@ -90,4 +94,3 @@ def embed(text: str, model: str | None = None) -> ProviderResult:
 
 def input_hash(*parts: str) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
-

@@ -19,6 +19,10 @@ class Settings:
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
     embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
     ai_budget_usd: float = float(os.getenv("AI_BUDGET_USD", "20"))
+    ai_input_price_per_million: float = float(os.getenv("AI_INPUT_PRICE_PER_MILLION", "0.35"))
+    ai_output_price_per_million: float = float(os.getenv("AI_OUTPUT_PRICE_PER_MILLION", "0.53"))
+    max_pdf_mb: int = int(os.getenv("MAX_PDF_MB", "100"))
+    max_pdf_pages: int = int(os.getenv("MAX_PDF_PAGES", "2000"))
 
     def ensure_dirs(self) -> None:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -26,4 +30,3 @@ class Settings:
 
 
 settings = Settings()
-
