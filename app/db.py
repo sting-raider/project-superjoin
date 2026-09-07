@@ -406,6 +406,12 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "cache_hit": "INTEGER NOT NULL DEFAULT 0",
         },
         "claims": {"precision": "INTEGER"},
+        "claim_interpretations": {
+            "entity_id": "TEXT",
+            "predicate_id": "TEXT",
+            "entity_relation": "TEXT",
+            "predicate_relation": "TEXT",
+        },
         "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'", "document_id": "TEXT"},
         "reviews": {
             "status": "TEXT NOT NULL DEFAULT 'active'",

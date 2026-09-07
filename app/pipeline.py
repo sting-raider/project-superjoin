@@ -74,7 +74,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
             )
         _update_run(run_id, 60, f"Grounding {len(all_candidates)} candidate claims")
         inserted = _insert_claims(workspace_id, document_id, all_candidates)
-        register_workspace_claims(workspace_id)
+        register_workspace_claims(workspace_id, run_id)
         _update_run(run_id, 78, "Resolving relationships")
         _resolve_workspace(workspace_id, run_id)
         _record_knowledge_changes(workspace_id, document_id, run_id, started_at)
