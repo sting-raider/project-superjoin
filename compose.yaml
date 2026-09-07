@@ -1,0 +1,29 @@
+services:
+  project-superjoin:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      APP_ENV: ${APP_ENV:-demo}
+      DATABASE_PATH: /app/data/project_superjoin.sqlite3
+      UPLOAD_DIR: /app/data/uploads
+      DEMO_MODE: ${DEMO_MODE:-true}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      EXTRACTION_MODEL: ${EXTRACTION_MODEL:-gemini-3.5-flash-lite}
+      REASONING_MODEL: ${REASONING_MODEL:-gemini-3.8-flash}
+      VISION_MODEL: ${VISION_MODEL:-gemini-3.8-flash}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-gemini-embedding-001}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+      AI_BUDGET_USD: ${AI_BUDGET_USD:-20}
+    volumes:
+      - project_superjoin_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  project_superjoin_data:
+

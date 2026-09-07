@@ -1,0 +1,2 @@
+"""Project SuperJoin application package."""
+
