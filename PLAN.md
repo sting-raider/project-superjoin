@@ -110,6 +110,10 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   detail, fact history, and JSON/CSV/XLSX fact exports. Formula-like source
   strings are neutralized in tabular exports while normalized decimal strings
   remain machine-readable.
+- Reported decimal precision is now persisted on extracted claims and used by
+  deterministic relationship comparison. A live SQLite regression covers the
+  crore/million rounding case, aggregates both evidence records through the
+  Trust Gate, and keeps unqualified 6.4%/6.5% values distinct.
 
 ### Resolved implementation simplifications
 
