@@ -88,7 +88,12 @@ def _seed_recorded_reasoning_outputs(workspace_id: str) -> None:
                 "evidence_claim_ids": [left["id"], right["id"]],
             }
             conn.execute(
-                "INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)",
+                """INSERT INTO model_cache
+                (id,role,model,input_hash,response_json,estimated_cost,created_at)
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(role,model,input_hash) DO UPDATE SET
+                  response_json=excluded.response_json,
+                  estimated_cost=excluded.estimated_cost""",
                 (
                     f"demo-reasoning-{relationship['id']}",
                     "reasoning",
