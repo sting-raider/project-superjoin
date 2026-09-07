@@ -114,6 +114,10 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   deterministic relationship comparison. A live SQLite regression covers the
   crore/million rounding case, aggregates both evidence records through the
   Trust Gate, and keeps unqualified 6.4%/6.5% values distinct.
+- When a configured extraction provider is present, the bounded model lane now
+  receives page text even when deterministic regex discovery finds no claims;
+  model evidence still has to match supplied source text before publication.
+  The no-key path remains deterministic and never invents a claim.
 
 ### Resolved implementation simplifications
 
