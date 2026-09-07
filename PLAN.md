@@ -522,32 +522,35 @@ Additional capability settings cover image support, embedding dimensions, reason
 
 Environment variables use role prefixes, such as `EXTRACTION_MODEL` and `EMBEDDING_BASE_URL`. Shared `AI_BASE_URL` and `AI_API_KEY` values provide convenient defaults.
 
-The Settings UI will offer:
+The Settings UI is a read-only, nonsecret capability inspector. It shows each
+role's configured endpoint, model name, request path, auth-header name,
+timeouts, output/dimension metadata, retry policy, and whether a key is
+present. There is no in-app model discovery or credential editor: endpoints,
+model names, pricing, and budget values are supplied through environment
+configuration so arbitrary compatible services remain usable without a saved
+profile or provider-specific UI branch.
 
-- Independent role selection and model-name entry.
-- Optional model discovery where the endpoint supports it.
-- Capability checks and small test requests with estimated cost.
-- Pricing and budget configuration.
-- A clear indication of configuration source.
-- Explicit embedding-index migration status.
-
-Configuration precedence:
-
-**session overrides → environment variables → saved nonsecret profile → bundled defaults**.
-
-Secrets entered in the UI remain server-memory-only. They are not stored in browser storage, returned by configuration APIs, exported, logged, or committed. Environment variables provide persistent credentials.
+Configuration precedence is **role-specific environment variables → shared
+`AI_*` fallback → blank/bundled Demo Mode defaults**. Credentials are never
+stored in browser storage, returned by configuration APIs, exported, logged,
+or committed.
 
 Each job captures an immutable nonsecret configuration snapshot. Changing Settings does not silently change an active run.
 
 ### Reference profile and extractor selection
 
-The initial reference-profile candidates use Google’s OpenAI-compatible endpoint:
+The initial research reference-profile candidates used Google’s
+OpenAI-compatible endpoint:
 
 - Extraction candidate: `gemini-3.5-flash-lite`, benchmarked against `gemini-3.8-flash`.
 - Reasoning and vision: `gemini-3.8-flash`.
 - Text embedding candidates: `gemini-embedding-001` and the current `gemini-embedding-2` option, both at 768 dimensions.
 
-These are replaceable profile values. Do not default to `gemini-3.1-flash-lite` without assignment-specific evaluation evidence. Google currently lists 3.5 Flash-Lite as its recommended replacement. [Gemini deprecations](https://ai.google.dev/gemini-api/docs/deprecations)
+These names are documentation-only benchmark candidates: they are never
+runtime defaults, validation values, or a model allowlist. Any configured
+provider/model can replace them. Do not default to `gemini-3.1-flash-lite`
+without assignment-specific evaluation evidence. Google currently lists 3.5
+Flash-Lite as its recommended replacement. [Gemini deprecations](https://ai.google.dev/gemini-api/docs/deprecations)
 
 Run both extraction candidates on the same frozen development gold regions before full-corpus extraction. Measure claim precision/recall/F1, grounding, numeric/context accuracy, schema adherence, latency, and total cost including retries/reasoning tokens. Do not tune on the held-out split.
 

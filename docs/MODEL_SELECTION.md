@@ -13,8 +13,10 @@ nonsecret timeout, output-token, concurrency, structured-output, and embedding
 task settings in `/api/v1/settings` so a run can be reproduced without
 exposing credentials.
 
-The reference candidates remain optional benchmark inputs until a local
-endpoint is available. They do not constrain runtime provider or model choice:
+The research reference candidates below remain optional benchmark inputs until
+a local endpoint is available. They are documentation-only historical labels;
+they do not constrain runtime provider or model choice, and they are never
+defaults or an allowlist:
 
 - Extraction: `gemini-3.5-flash-lite` versus `gemini-3.8-flash`.
 - Embeddings: `gemini-embedding-001` versus the currently supported
