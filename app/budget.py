@@ -44,10 +44,14 @@ def reserve(run_id: str | None, role: str, model: str, input_hash: str, amount: 
 def settle(reservation: Reservation, actual_cost: float, *, status: str = "complete", input_tokens: int | None = None, output_tokens: int | None = None, latency_ms: int | None = None, cache_hit: bool = False) -> None:
     actual_cost = max(0.0, float(actual_cost))
     with db() as conn:
-        row = conn.execute("SELECT reserved_usd FROM model_calls WHERE id=?", (reservation.id,)).fetchone()
-        reserved = float(row["reserved_usd"] if row else reservation.amount)
+        row = conn.execute("SELECT reserved_usd,status FROM model_calls WHERE id=?", (reservation.id,)).fetchone()
+        # Provider retries and background completion callbacks can race. A reservation
+        # may be settled only once; completed/failed rows are already accounted for.
+        if row is None or row["status"] != "reserved":
+            return
+        reserved = float(row["reserved_usd"])
         conn.execute("UPDATE budget_ledger SET reserved_usd=MAX(0,reserved_usd-?),spent_usd=spent_usd+?,updated_at=? WHERE id=1", (reserved, actual_cost, utc_now()))
-        conn.execute("UPDATE model_calls SET status=?,estimated_cost=?,input_tokens=?,output_tokens=?,latency_ms=?,cache_hit=? WHERE id=?", (status, actual_cost, input_tokens, output_tokens, latency_ms, int(cache_hit), reservation.id))
+        conn.execute("UPDATE model_calls SET status=?,reserved_usd=0,estimated_cost=?,input_tokens=?,output_tokens=?,latency_ms=?,cache_hit=? WHERE id=?", (status, actual_cost, input_tokens, output_tokens, latency_ms, int(cache_hit), reservation.id))
 
 
 def snapshot() -> dict[str, Any]:
