@@ -26,10 +26,33 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
     """
 
     with db() as conn:
-        claims = conn.execute("SELECT c.* FROM claims c JOIN documents d ON d.id=c.document_id WHERE c.workspace_id=? AND c.extraction_status='accepted' AND d.status<>'archived' ORDER BY c.id", (workspace_id,)).fetchall()
+        rows = conn.execute(
+            """SELECT c.*,ci.entity_id,ci.predicate_id,
+            e.canonical_name,p.key AS canonical_predicate
+            FROM claims c JOIN documents d ON d.id=c.document_id
+            LEFT JOIN claim_interpretations ci ON ci.claim_id=c.id
+              AND ci.version=(SELECT MAX(ci2.version) FROM claim_interpretations ci2 WHERE ci2.claim_id=c.id)
+            LEFT JOIN entities e ON e.id=ci.entity_id
+            LEFT JOIN predicates p ON p.id=ci.predicate_id
+            WHERE c.workspace_id=? AND c.extraction_status='accepted' AND d.status<>'archived'
+            ORDER BY c.id""",
+            (workspace_id,),
+        ).fetchall()
+    claims = []
+    for row in rows:
+        claim = dict(row)
+        claim["source_subject"] = claim["subject"]
+        claim["source_predicate"] = claim["predicate"]
+        claim["subject"] = claim["canonical_name"] or claim["subject"]
+        claim["predicate"] = claim["canonical_predicate"] or claim["predicate"]
+        claims.append(claim)
     groups: dict[tuple[str, str], list[Any]] = {}
     for claim in claims:
-        groups.setdefault((claim["subject"].casefold(), claim["predicate"].casefold()), []).append(claim)
+        identity = (
+            str(claim["entity_id"] or claim["subject"]).casefold(),
+            str(claim["predicate_id"] or claim["predicate"]).casefold(),
+        )
+        groups.setdefault(identity, []).append(claim)
     inserted = 0
     for group in groups.values():
         if len(group) > 250:

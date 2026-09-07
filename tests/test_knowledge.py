@@ -114,6 +114,48 @@ def test_conflicting_unseen_metric_is_one_fact_family_with_alternatives(tmp_path
         object.__setattr__(settings, "upload_dir", original_upload)
 
 
+def test_confirmed_registry_aliases_share_reasoning_and_fact_family(tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "alias-family.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "metrics.pdf", "hash", "complete", now))
+            conn.execute("INSERT INTO entities(id,workspace_id,canonical_name,created_at) VALUES(?,?,?,?)", ("entity-acme", "w", "Acme Corporation", now))
+            conn.execute("INSERT INTO predicates(id,workspace_id,key,value_kind,created_at) VALUES(?,?,?,?,?)", ("predicate-arr", "w", "annual_recurring_revenue", "money", now))
+            for index, (subject, predicate) in enumerate((("Acme Corp.", "ARR"), ("ACME Corporation", "annual recurring revenue")), start=1):
+                claim_id = f"c{index}"
+                evidence = json.dumps({"text": f"{subject} {predicate} was $10 million."})
+                conn.execute(
+                    """INSERT INTO claims
+                    (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,created_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (claim_id, "w", "d", subject, predicate, "$10 million", "10000000", "money", "USD", "FY2026", "actual", "consolidated", evidence, now),
+                )
+                conn.execute(
+                    """INSERT INTO claim_interpretations
+                    (id,claim_id,version,subject,predicate,normalized_value,value_type,unit,period,modality,scope,entity_status,predicate_status,eligibility,entity_id,predicate_id,entity_relation,predicate_relation,created_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (f"i{index}", claim_id, 1, subject, predicate, "10000000", "money", "USD", "FY2026", "actual", "consolidated", "resolved", "resolved", "eligible", "entity-acme", "predicate-arr", "equivalent", "equivalent", now),
+                )
+        assess_relationships("w")
+        rebuild_workspace("w")
+        with db() as conn:
+            relationship = conn.execute("SELECT relationship_type FROM relationships").fetchone()
+            facts = conn.execute("SELECT subject,predicate FROM facts WHERE active=1").fetchall()
+        assert relationship["relationship_type"] == "CORROBORATES"
+        assert [(row["subject"], row["predicate"]) for row in facts] == [
+            ("Acme Corporation", "annual_recurring_revenue")
+        ]
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
+
+
 def test_visual_only_evidence_requires_review(tmp_path: Path) -> None:
     original_database = settings.database_path
     original_upload = settings.upload_dir
