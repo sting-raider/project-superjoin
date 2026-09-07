@@ -65,3 +65,9 @@ def test_human_preference_is_explicit_and_revision_bound() -> None:
         result = client.post("/api/v1/resolve", json={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26", "policy": "human_preference"})
         assert result.json()["decision"] == "allow"
         assert "HUMAN_PREFERENCE" in result.json()["reason_codes"]
+
+
+def test_upload_rejects_non_pdf_signature() -> None:
+    with TestClient(app) as client:
+        response = client.post("/api/v1/documents", files={"file": ("notes.txt", b"not a pdf", "text/plain")}, data={"workspace_id": "delhivery"})
+        assert response.status_code == 400

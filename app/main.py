@@ -70,8 +70,10 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Upload a PDF file")
     data = await file.read()
-    if len(data) > 100 * 1024 * 1024:
-        raise HTTPException(413, "PDF exceeds the 100 MB limit")
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(400, "The uploaded file is not a PDF")
+    if len(data) > settings.max_pdf_mb * 1024 * 1024:
+        raise HTTPException(413, f"PDF exceeds the {settings.max_pdf_mb} MB limit")
     digest = hashlib.sha256(data).hexdigest()
     document_id = f"doc-{digest[:12]}"
     run_id = f"run-{uuid.uuid4().hex[:12]}"

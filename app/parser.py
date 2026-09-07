@@ -10,6 +10,7 @@ from typing import Any
 import pdfplumber
 
 from .normalization import infer_modality, parse_numeric, parse_period
+from .security import security_flags
 
 
 @dataclass
@@ -105,6 +106,7 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
             context_start = max(0, match.start() - 180)
             context_end = min(len(text), match.end() + 260)
             excerpt = re.sub(r"\s+", " ", text[context_start:context_end]).strip()
+            flags = security_flags(excerpt)
             candidates.append({
                 "subject": _subject(text),
                 "predicate": re.sub(r"\s+", " ", match.group("label")).strip().lower().replace(" ", "_"),
@@ -115,7 +117,8 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
                 "period": parse_period(excerpt),
                 "modality": infer_modality(excerpt),
                 "scope": "consolidated" if "consolidated" in excerpt.lower() else None,
-                "evidence": evidence_for(page, context_start, context_end, excerpt),
+                "evidence": {**evidence_for(page, context_start, context_end, excerpt), "security_flags": flags},
+                "security_flags": flags,
                 "category": category,
             })
     semantic_patterns = [
@@ -126,6 +129,7 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
             context_start = max(0, match.start() - 80)
             context_end = min(len(text), match.end() + 180)
             excerpt = re.sub(r"\s+", " ", text[context_start:context_end]).strip()
+            flags = security_flags(excerpt)
             candidates.append({
                 "subject": match.group("name").strip(),
                 "predicate": predicate,
@@ -136,7 +140,8 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
                 "period": parse_period(excerpt),
                 "modality": "actual",
                 "scope": None,
-                "evidence": evidence_for(page, context_start, context_end, excerpt),
+                "evidence": {**evidence_for(page, context_start, context_end, excerpt), "security_flags": flags},
+                "security_flags": flags,
                 "category": "semantic",
             })
     return _dedupe_candidates(candidates)

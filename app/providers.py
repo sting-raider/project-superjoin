@@ -5,6 +5,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+import base64
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,6 +81,21 @@ def structured_chat(role: str, system: str, user: str, model: str | None = None)
     payload = {
         "model": chosen,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+    return _post("/chat/completions", payload, chosen)
+
+
+def vision_chat(system: str, user: str, image_bytes: bytes, model: str | None = None) -> ProviderResult:
+    chosen = model or settings.vision_model
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    payload = {
+        "model": chosen,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": [{"type": "text", "text": user}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}}]},
+        ],
         "temperature": 0,
         "response_format": {"type": "json_object"},
     }
