@@ -11,6 +11,16 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+def _fact_id(client, workspace_id: str, subject: str, predicate: str, period: str) -> str:
+    items = client.get("/api/v1/facts", params={"workspace_id": workspace_id, "limit": 500}).json()["items"]
+    match = next(
+        item
+        for item in items
+        if item["subject"] == subject and item["predicate"] == predicate and item["period"] == period
+    )
+    return match["id"]
+
+
 def test_demo_health_and_required_cases() -> None:
     with TestClient(app) as client:
         assert client.get("/api/v1/health").status_code == 200
@@ -38,7 +48,8 @@ def test_dynamic_registries_are_visible_without_overmerging() -> None:
 
 def test_fact_inspector_keeps_both_revenue_evidence_anchors() -> None:
     with TestClient(app) as client:
-        response = client.get("/api/v1/facts/fact-delhivery-revenue-fy24")
+        fact_id = _fact_id(client, "delhivery", "Delhivery", "revenue_from_services", "FY24")
+        response = client.get(f"/api/v1/facts/{fact_id}")
         assert response.status_code == 200
         payload = response.json()
         assert len(payload["fact"]["evidence"]) == 2
@@ -61,7 +72,8 @@ def test_resolver_requires_period_for_temporal_role_history() -> None:
 
 def test_human_preference_is_explicit_and_revision_bound() -> None:
     with TestClient(app) as client:
-        review = client.post("/api/v1/reviews", json={"workspace_id": "india-macro", "fact_id": "fact-india-gdp-fy26", "action": "prefer", "rationale": "Use the RBI forecast for this named scenario."})
+        fact_id = _fact_id(client, "india-macro", "India", "real_gdp_growth", "FY26")
+        review = client.post("/api/v1/reviews", json={"workspace_id": "india-macro", "fact_id": fact_id, "action": "prefer", "rationale": "Use the RBI forecast for this named scenario."})
         assert review.status_code == 200
         result = client.post("/api/v1/resolve", json={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26", "policy": "human_preference"})
         assert result.json()["decision"] == "allow"
@@ -92,7 +104,8 @@ def test_read_models_and_exports_are_available() -> None:
         assert claim.status_code == 200
         assert claim.json()["anchors"]
         assert claim.json()["interpretations"][0]["entity_status"] == "resolved"
-        history = client.get("/api/v1/facts/fact-delhivery-revenue-fy24/history")
+        fact_id = _fact_id(client, "delhivery", "Delhivery", "revenue_from_services", "FY24")
+        history = client.get(f"/api/v1/facts/{fact_id}/history")
         assert history.status_code == 200
         assert history.json()["items"]
         csv_export = client.get("/api/v1/exports/facts?workspace_id=delhivery&format=csv")
