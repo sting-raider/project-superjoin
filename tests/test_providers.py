@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import urllib.error
 from dataclasses import replace
 from typing import Any, Self
 
@@ -134,3 +136,37 @@ def test_empty_role_configuration_does_not_enable_shared_provider(monkeypatch) -
     assert providers.available() is False
     assert providers.available("extraction") is False
     assert providers.available("embedding") is False
+
+
+def test_transient_provider_failure_uses_retry_after_without_silent_fallback(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="http://retry.example/v1",
+        extraction_api_key="retry-key",
+        extraction_model="custom-retry-model",
+        provider_retry_attempts=2,
+        provider_retry_backoff_seconds=0.01,
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(
+                request.full_url,
+                429,
+                "rate limited",
+                {"Retry-After": "0"},
+                io.BytesIO(b'{"error":"slow down"}'),
+            )
+        return _Response({"choices": [{"message": {"content": json.dumps({"claims": []})}}]})
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(providers.time, "sleep", lambda delay: sleeps.append(delay))
+    result = providers.structured_chat("extraction", "system", "user")
+    assert result.data == {"claims": []}
+    assert calls == [90, 90]
+    assert len(sleeps) == 1
+    assert 0.0 <= sleeps[0] <= 0.25

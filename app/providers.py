@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import random
 import time
 import urllib.error
 import urllib.request
@@ -143,17 +144,29 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=body, headers=_headers(config), method="POST")
     started = time.perf_counter()
-    try:
-        with urllib.request.urlopen(request, timeout=int(config["timeout"])) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
+    attempts = max(1, int(getattr(settings, "provider_retry_attempts", 1)))
+    raw = None
+    for attempt in range(attempts):
         try:
-            detail = exc.read().decode("utf-8", errors="replace")[:500]
-        except (AttributeError, OSError, UnicodeError):  # pragma: no cover - defensive for unusual transports
-            detail = str(exc)
-        raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}") from exc
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise ProviderError(f"{role} provider request failed: {exc}") from exc
+            with urllib.request.urlopen(request, timeout=int(config["timeout"])) as response:
+                raw = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")[:500]
+            except (AttributeError, OSError, UnicodeError):  # pragma: no cover - defensive for unusual transports
+                detail = str(exc)
+            transient = exc.code == 429 or exc.code >= 500
+            if not transient or attempt + 1 >= attempts:
+                raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}") from exc
+            retry_after = _retry_after_seconds(exc)
+            base = float(getattr(settings, "provider_retry_backoff_seconds", 0.25))
+            delay = retry_after if retry_after is not None else base * (2**attempt)
+            time.sleep(max(0.0, delay + random.uniform(0.0, min(base, 0.25))))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise ProviderError(f"{role} provider request failed: {exc}") from exc
+    if raw is None:  # pragma: no cover - loop either returns or raises
+        raise ProviderError(f"{role} provider returned no response")
     elapsed = int((time.perf_counter() - started) * 1000)
     if operation == "embedding":
         parsed = raw
@@ -190,6 +203,14 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
         latency_ms=elapsed,
         endpoint=url,
     )
+
+
+def _retry_after_seconds(error: urllib.error.HTTPError) -> float | None:
+    value = error.headers.get("Retry-After") if error.headers else None
+    try:
+        return max(0.0, float(value)) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def structured_chat(role: str, system: str, user: str, model: str | None = None, max_output_tokens: int = 1200) -> ProviderResult:

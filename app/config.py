@@ -18,6 +18,14 @@ def _int_env(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an integer") from exc
 
 
+def _float_env(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    try:
+        return float(raw) if raw not in (None, "") else default
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+
+
 def _bool_env(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw in (None, ""):
@@ -83,6 +91,8 @@ class Settings:
     reasoning_send_model: bool = _bool_env("REASONING_SEND_MODEL", True)
     vision_send_model: bool = _bool_env("VISION_SEND_MODEL", True)
     embedding_send_model: bool = _bool_env("EMBEDDING_SEND_MODEL", True)
+    provider_retry_attempts: int = _int_env("AI_RETRY_ATTEMPTS", 2)
+    provider_retry_backoff_seconds: float = _float_env("AI_RETRY_BACKOFF_SECONDS", 0.25)
     ai_budget_usd: float = float(os.getenv("AI_BUDGET_USD", "20"))
     ai_input_price_per_million: float = float(os.getenv("AI_INPUT_PRICE_PER_MILLION", "0.35"))
     ai_output_price_per_million: float = float(os.getenv("AI_OUTPUT_PRICE_PER_MILLION", "0.53"))
