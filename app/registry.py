@@ -138,15 +138,24 @@ def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> i
             "SELECT id,subject,predicate,value_type,evidence_json FROM claims WHERE workspace_id=? AND extraction_status='accepted'",
             (workspace_id,),
         ).fetchall()
+    resolutions: dict[tuple[str, str, str], dict[str, Any]] = {}
     for row in rows:
-        resolution = observe_claim_schema(
-            workspace_id,
-            row["subject"],
-            row["predicate"],
-            row["value_type"],
-            json.loads(row["evidence_json"]),
-            run_id,
+        key = (
+            _name_key(row["subject"]),
+            _predicate_key(row["predicate"]),
+            str(row["value_type"]),
         )
+        resolution = resolutions.get(key)
+        if resolution is None:
+            resolution = observe_claim_schema(
+                workspace_id,
+                row["subject"],
+                row["predicate"],
+                row["value_type"],
+                json.loads(row["evidence_json"]),
+                run_id,
+            )
+            resolutions[key] = resolution
         entity = resolution["entity"]
         predicate = resolution["predicate"]
         with db() as conn:

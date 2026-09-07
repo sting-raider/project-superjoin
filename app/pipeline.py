@@ -335,6 +335,13 @@ def _model_claim_grounded(item: dict[str, Any], candidates: list[dict[str, Any]]
 
 
 def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_id: str) -> list[dict[str, Any]]:
+    if not available("vision"):
+        _update_run(
+            run_id,
+            45,
+            f"Page {page_index + 1} requires visual review; no vision provider is configured",
+        )
+        return []
     image = _render_page(pdf_bytes, page_index)
     if not image:
         _update_run(run_id, 45, f"Page {page_index + 1} requires visual review; renderer unavailable")

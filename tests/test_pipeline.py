@@ -7,6 +7,7 @@ from app.pipeline import (
     _claim_id,
     _deterministically_normalized,
     _model_extract,
+    _vision_extract_page,
     build_extraction_batches,
 )
 from app.providers import ProviderResult
@@ -88,3 +89,16 @@ def test_model_numeric_normalization_is_recomputed_deterministically() -> None:
     assert normalized["value_type"] == "money"
     assert normalized["unit"] == "USD"
     assert normalized["normalization_trace"] == ["parse-number", "scale:million"]
+
+
+def test_no_key_visual_fallback_does_not_render(monkeypatch) -> None:
+    monkeypatch.setattr("app.pipeline.available", lambda role=None: False)
+    monkeypatch.setattr(
+        "app.pipeline._update_run", lambda *args, **kwargs: None
+    )
+
+    def render_must_not_run(*args, **kwargs):
+        raise AssertionError("renderer ran without a configured vision provider")
+
+    monkeypatch.setattr("app.pipeline._render_page", render_must_not_run)
+    assert _vision_extract_page(b"pdf", 0, "source.pdf", "run") == []
