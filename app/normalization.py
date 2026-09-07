@@ -18,6 +18,7 @@ SCALE_FACTORS = {
     "billion": Decimal("1000000000"),
     "bn": Decimal("1000000000"),
 }
+MISSING_VALUES = {"", "-", "—", "–", "n/a", "na", "nil", "none", "not available", "not meaningful", "nm"}
 
 
 def _decimal(value: str) -> Decimal | None:
@@ -41,8 +42,12 @@ def decimal_string(value: Decimal | None) -> str | None:
 def parse_numeric(raw: str) -> dict[str, Any]:
     """Parse a financial-looking scalar while retaining the display trace."""
     original = raw.strip()
+    if original.lower() in MISSING_VALUES:
+        return {"raw": original, "normalized": None, "value_type": "missing", "unit": None, "trace": ["missing-token"]}
     is_percentage = bool(re.search(r"%|per cent|percent", original, flags=re.I))
-    numbers = re.findall(r"(?:\(|-)?\s*\d[\d,]*(?:\.\d+)?\s*\)?", original)
+    is_percentage_points = bool(re.search(r"percentage\s*points?|pp\b", original, flags=re.I))
+    is_basis_points = bool(re.search(r"basis\s*points?|\bbps?\b", original, flags=re.I))
+    numbers = re.findall(r"(?:\(|[-−+])?\s*\d[\d,]*(?:\.\d+)?\s*\)?", original)
     values = [v for v in (_decimal(n) for n in numbers) if v is not None]
     if not values:
         return {"raw": original, "normalized": None, "value_type": "text", "trace": []}
@@ -59,17 +64,27 @@ def parse_numeric(raw: str) -> dict[str, Any]:
         if token in lower:
             currency = code
             break
-    if is_percentage:
+    if is_basis_points:
+        normalized = value / Decimal("10000")
+        value_type = "rate"
+        display_unit = "bps"
+    elif is_percentage and not is_percentage_points:
         normalized = value / Decimal("100")
         value_type = "percentage"
         display_unit = "%"
+    elif is_percentage_points:
+        normalized = value
+        value_type = "percentage_points"
+        display_unit = "pp"
     else:
         normalized = value
         value_type = "number"
         display_unit = currency or unit
     if len(values) > 1 and re.search(r"-|to|–", original, flags=re.I):
         end = values[1]
-        if is_percentage:
+        if is_basis_points:
+            end /= Decimal("10000")
+        elif is_percentage and not is_percentage_points:
             end /= Decimal("100")
         elif unit:
             end *= SCALE_FACTORS[unit]
@@ -84,8 +99,23 @@ def parse_numeric(raw: str) -> dict[str, Any]:
         "unit": display_unit,
         "currency": currency,
         "precision": _precision(original),
-        "trace": ["parse-number", *( [f"scale:{unit}"] if unit else []), *( ["percent-to-fraction"] if is_percentage else [])],
+        "operator": _bound_operator(original),
+        "trace": [
+            "parse-number",
+            *([f"scale:{unit}"] if unit else []),
+            *(["percent-to-fraction"] if is_percentage and not is_percentage_points else []),
+            *(["basis-points-to-fraction"] if is_basis_points else []),
+            *(["percentage-points-preserved"] if is_percentage_points else []),
+            *([f"bound:{_bound_operator(original)}"] if _bound_operator(original) else []),
+        ],
     }
+
+
+def _bound_operator(raw: str) -> str | None:
+    match = re.match(r"\s*(<=|>=|<|>|≤|≥)", raw)
+    if not match:
+        return None
+    return {"≤": "<=", "≥": ">="}.get(match.group(1), match.group(1))
 
 
 def _precision(raw: str) -> int | None:
@@ -95,13 +125,24 @@ def _precision(raw: str) -> int | None:
 
 def parse_period(text: str) -> str | None:
     compact = re.sub(r"\s+", "", text.upper())
-    for pattern in (r"FY20\d{2}(?:/\d{2})?", r"20\d{2}/\d{2}", r"Q[1-4]FY20\d{2}"):
+    for pattern in (r"FY20\d{2}(?:/\d{2})?", r"20\d{2}/\d{2}", r"Q[1-4]FY(?:20)?\d{2}"):
         match = re.search(pattern, compact)
         if match:
             value = match.group(0)
             return value.replace("Q", "Q")
     match = re.search(r"(?:YEAR|ENDED|ASAT).*?(20\d{2})", text, flags=re.I)
     return f"FY{match.group(1)}" if match else None
+
+
+def parse_interval(text: str) -> dict[str, str | None]:
+    """Return explicit effective/publication date hints without inventing dates."""
+
+    iso_dates = re.findall(r"\b20\d{2}-\d{2}-\d{2}\b", text)
+    if len(iso_dates) >= 2:
+        return {"start": iso_dates[0], "end": iso_dates[1], "basis": "explicit-iso-range"}
+    if len(iso_dates) == 1:
+        return {"start": iso_dates[0], "end": iso_dates[0], "basis": "explicit-iso-date"}
+    return {"start": None, "end": None, "basis": None}
 
 
 def infer_modality(text: str) -> str | None:
