@@ -6,6 +6,8 @@ import urllib.error
 from dataclasses import replace
 from typing import Any, Self
 
+import pytest
+
 from app import providers
 from app.config import settings
 
@@ -146,6 +148,8 @@ def test_transient_provider_failure_uses_retry_after_without_silent_fallback(mon
         extraction_model="custom-retry-model",
         provider_retry_attempts=2,
         provider_retry_backoff_seconds=0.01,
+        ai_input_price_per_million=1.0,
+        ai_output_price_per_million=1.0,
     )
     monkeypatch.setattr(providers, "settings", configured)
     calls: list[int] = []
@@ -161,13 +165,41 @@ def test_transient_provider_failure_uses_retry_after_without_silent_fallback(mon
                 {"Retry-After": "0"},
                 io.BytesIO(b'{"error":"slow down"}'),
             )
-        return _Response({"choices": [{"message": {"content": json.dumps({"claims": []})}}]})
+        return _Response({"choices": [{"message": {"content": json.dumps({"claims": []})}}], "usage": {"prompt_tokens": 100, "completion_tokens": 100}})
 
     monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(providers.time, "sleep", lambda delay: sleeps.append(delay))
     result = providers.structured_chat("extraction", "system", "user")
     assert result.data == {"claims": []}
     assert result.attempts == 2
+    assert result.estimated_cost == 0.0004
     assert calls == [90, 90]
     assert len(sleeps) == 1
     assert 0.0 <= sleeps[0] <= 0.25
+
+
+def test_exhausted_transient_provider_error_exposes_attempt_count(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="http://retry.example/v1",
+        extraction_api_key="retry-key",
+        extraction_model="custom-retry-model",
+        provider_retry_attempts=3,
+        provider_retry_backoff_seconds=0.0,
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+
+    def fake_urlopen(request, timeout):
+        raise urllib.error.HTTPError(
+            request.full_url,
+            503,
+            "unavailable",
+            {"Retry-After": "0"},
+            io.BytesIO(b'{"error":"unavailable"}'),
+        )
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(providers.time, "sleep", lambda _delay: None)
+    with pytest.raises(providers.ProviderError) as error:
+        providers.structured_chat("extraction", "system", "user")
+    assert error.value.attempts == 3

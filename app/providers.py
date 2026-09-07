@@ -29,6 +29,10 @@ class ProviderResult:
 class ProviderError(RuntimeError):
     """A configured provider failed or does not support the requested lane."""
 
+    def __init__(self, message: str, *, attempts: int = 1) -> None:
+        super().__init__(message)
+        self.attempts = max(1, int(attempts))
+
 
 _ROLE_FIELDS: dict[str, dict[str, str]] = {
     "extraction": {
@@ -161,15 +165,15 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
                 detail = str(exc)
             transient = exc.code == 429 or exc.code >= 500
             if not transient or attempt + 1 >= attempts:
-                raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}") from exc
+                raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}", attempts=attempts_used) from exc
             retry_after = _retry_after_seconds(exc)
             base = float(getattr(settings, "provider_retry_backoff_seconds", 0.25))
             delay = retry_after if retry_after is not None else base * (2**attempt)
             time.sleep(max(0.0, delay + random.uniform(0.0, min(base, 0.25))))
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise ProviderError(f"{role} provider request failed: {exc}") from exc
+            raise ProviderError(f"{role} provider request failed: {exc}", attempts=attempts_used) from exc
     if raw is None:  # pragma: no cover - loop either returns or raises
-        raise ProviderError(f"{role} provider returned no response")
+        raise ProviderError(f"{role} provider returned no response", attempts=attempts_used)
     elapsed = int((time.perf_counter() - started) * 1000)
     if operation == "embedding":
         parsed = raw
@@ -192,7 +196,7 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
     usage = raw.get("usage") or {}
     input_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
     output_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
-    estimated_cost = (
+    per_attempt_cost = (
         ((input_tokens or max(1, len(body) // 4)) / 1_000_000) * settings.ai_input_price_per_million
         + ((output_tokens or fallback_output_tokens or config.get("max_output_tokens", 1200)) / 1_000_000)
         * settings.ai_output_price_per_million
@@ -202,7 +206,7 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        estimated_cost=round(estimated_cost, 6),
+        estimated_cost=round(per_attempt_cost * attempts_used, 6),
         latency_ms=elapsed,
         endpoint=url,
         attempts=attempts_used,

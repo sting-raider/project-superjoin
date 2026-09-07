@@ -299,7 +299,7 @@ def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str 
         return candidates
     except ProviderError as exc:
         if reservation:
-            settle(reservation, 0.0, status="failed")
+            settle(reservation, 0.0, status="failed", attempts=exc.attempts)
         else:
             _record_model_call(run_id, "extraction", chosen_model, digest, "offline", 0.0, str(exc))
         return candidates
@@ -354,7 +354,7 @@ def _repair_model_extract(compact: str, filename: str, run_id: str, model: str, 
         return None
     except ProviderError as exc:
         if reservation:
-            settle(reservation, 0.0, status="failed")
+            settle(reservation, 0.0, status="failed", attempts=exc.attempts)
         else:
             _record_model_call(run_id, "extraction", model, digest, "repair_failed", 0.0, str(exc))
         return None
@@ -434,7 +434,7 @@ def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_i
         )
     except (ProviderError, BudgetExceeded) as exc:
         if reservation:
-            settle(reservation, 0.0, status="failed")
+            settle(reservation, 0.0, status="failed", attempts=getattr(exc, "attempts", 1))
         _update_run(run_id, 45, f"Page {page_index + 1} visual fallback unavailable: {exc}")
         return []
     if reservation:

@@ -130,9 +130,9 @@ def _semantic_relationship(a: Any, b: Any, run_id: str | None) -> tuple[str, str
         )
     except BudgetExceeded:
         return None
-    except ProviderError:
+    except ProviderError as exc:
         if reservation:
-            settle(reservation, 0.0, status="failed")
+            settle(reservation, 0.0, status="failed", attempts=exc.attempts)
         return None
     if reservation:
         settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)

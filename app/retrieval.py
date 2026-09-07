@@ -117,13 +117,13 @@ def embed_claim(claim_id: str, space_id: str) -> dict[str, Any]:
         reservation = reserve(None, "embedding", space["model"], content_hash, estimate_cost(len(text), 32))
         result = embed(text, space["model"])
         vector = _extract_vector(result.data)
-    except (BudgetExceeded, ProviderError, ValueError):
+    except (BudgetExceeded, ProviderError, ValueError) as exc:
         if reservation:
-            settle(reservation, 0.0, status="failed")
+            settle(reservation, 0.0, status="failed", attempts=getattr(exc, "attempts", 1))
         raise
     if len(vector) != int(space["dimensions"]):
         if reservation:
-            settle(reservation, 0.0, status="failed", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
+            settle(reservation, 0.0, status="failed", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
         raise ValueError(f"embedding dimension mismatch: expected {space['dimensions']}, got {len(vector)}")
     if reservation:
         settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
@@ -158,9 +158,9 @@ def embed_query(workspace_id: str, query: str, space_id: str | None = None) -> l
         vector = _extract_vector(result.data)
         if len(vector) != int(space["dimensions"]):
             raise ValueError(f"embedding dimension mismatch: expected {space['dimensions']}, got {len(vector)}")
-    except (BudgetExceeded, ProviderError, ValueError):
+    except (BudgetExceeded, ProviderError, ValueError) as exc:
         if reservation:
-            settle(reservation, 0.0, status="failed")
+            settle(reservation, 0.0, status="failed", attempts=getattr(exc, "attempts", 1))
         raise
     if reservation:
         settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)

@@ -47,7 +47,7 @@ def benchmark(role: str, models: list[str], rows: list[dict[str, Any]]) -> dict[
                 results.append({"model": model, "case": row.get("id"), "valid": valid, "latency_ms": round((time.perf_counter() - started) * 1000, 2), "estimated_cost": response.estimated_cost, **detail})
             except (BudgetExceeded, ProviderError, ValueError) as exc:
                 if reservation:
-                    settle(reservation, 0.0, status="failed")
+                    settle(reservation, 0.0, status="failed", attempts=getattr(exc, "attempts", 1))
                 results.append({"model": model, "case": row.get("id"), "valid": False, "error": str(exc), "latency_ms": round((time.perf_counter() - started) * 1000, 2)})
     return {"status": "complete", "role": role, "candidates": models, "cases": len(rows), "results": results}
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
-from app.budget import reserve, settle, snapshot
+from app import budget
+from app.budget import estimate_cost, reserve, settle, snapshot
 from app.config import settings
 from app.db import db, init_db
 
@@ -48,3 +50,14 @@ def test_settlement_cannot_exceed_configured_cap(tmp_path: Path) -> None:
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_estimate_cost_reserves_configured_retry_envelope(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        provider_retry_attempts=3,
+        ai_input_price_per_million=1.0,
+        ai_output_price_per_million=1.0,
+    )
+    monkeypatch.setattr(budget, "settings", configured)
+    assert estimate_cost(4000, 1000) == 0.006

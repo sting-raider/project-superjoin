@@ -403,8 +403,8 @@ def _registry_embedding(text: str, run_id: str | None) -> list[float]:
             raise ValueError("provider returned no registry embedding")
         norm = math.sqrt(sum(float(value) ** 2 for value in vector)) or 1.0
         normalized = [float(value) / norm for value in vector]
-    except Exception:
-        settle(reservation, 0.0, status="failed")
+    except Exception as exc:
+        settle(reservation, 0.0, status="failed", attempts=getattr(exc, "attempts", 1))
         raise
     settle(
         reservation,
@@ -477,8 +477,8 @@ def _semantic_resolution(
         )
     except BudgetExceeded:
         return None
-    except ProviderError:
-        settle(reservation, 0.0, status="failed")
+    except ProviderError as exc:
+        settle(reservation, 0.0, status="failed", attempts=exc.attempts)
         return None
     settle(
         reservation,

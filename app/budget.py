@@ -18,11 +18,18 @@ class Reservation:
     amount: float
 
 
-def estimate_cost(input_chars: int, max_output_tokens: int = 1200) -> float:
-    """Conservative estimate used before a paid request is dispatched."""
+def estimate_cost(input_chars: int, max_output_tokens: int = 1200, attempts: int | None = None) -> float:
+    """Conservative estimate used before a paid request is dispatched.
+
+    Unless a caller supplies a smaller, known retry envelope, reserve for the
+    configured provider attempts so concurrent work cannot oversubscribe the
+    cumulative cap while a transient response is being retried.
+    """
 
     input_tokens = max(1, input_chars // 4)
-    return round((input_tokens / 1_000_000) * settings.ai_input_price_per_million + (max_output_tokens / 1_000_000) * settings.ai_output_price_per_million, 6)
+    per_attempt = (input_tokens / 1_000_000) * settings.ai_input_price_per_million + (max_output_tokens / 1_000_000) * settings.ai_output_price_per_million
+    retry_envelope = max(1, int(settings.provider_retry_attempts if attempts is None else attempts))
+    return round(per_attempt * retry_envelope, 6)
 
 
 def reserve(run_id: str | None, role: str, model: str, input_hash: str, amount: float) -> Reservation:
