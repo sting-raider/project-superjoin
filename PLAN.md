@@ -198,6 +198,8 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   configuration values with blank defaults. A fake regression covers an
   arbitrary local model without a key and an Azure-style deployment path with
   `api-key` auth; no Gemini-specific runtime branch or model allowlist exists.
+  Transient 429/5xx responses use configurable bounded backoff and honor
+  `Retry-After`, with the final provider error preserved after exhaustion.
 - Trust Gate temporal semantics now overlay `fact_versions` by their immutable
   workspace knowledge revision, so `known_at_revision` returns the historical
   value and version identifier rather than filtering the current fact's local

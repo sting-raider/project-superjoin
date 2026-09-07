@@ -50,6 +50,9 @@ implement response-format hints, and set `EMBEDDING_INCLUDE_DIMENSIONS=false`
 when an embedding service chooses dimensions server-side. Provider errors,
 missing models, unsupported response formats, and vector dimension mismatches
 remain visible in run telemetry and search responses.
+Transient HTTP 429/5xx responses use the configured `AI_RETRY_ATTEMPTS` and
+`AI_RETRY_BACKOFF_SECONDS` policy (including `Retry-After` when supplied); the
+final provider error is retained when retries are exhausted.
 
 The starter PDFs are third-party publications and are not committed while
 redistribution permission is unresolved. Use
