@@ -13,8 +13,8 @@
           "characters": 4299,
           "words": 685,
           "empty_pages": 0,
-          "elapsed_ms": 606.63,
-          "peak_python_bytes": 8241234
+          "elapsed_ms": 651.41,
+          "peak_python_bytes": 8242451
         },
         {
           "backend": "pymupdf",
@@ -24,8 +24,8 @@
           "characters": 4297,
           "words": 681,
           "empty_pages": 0,
-          "elapsed_ms": 13.4,
-          "peak_python_bytes": 114833,
+          "elapsed_ms": 15.84,
+          "peak_python_bytes": 115331,
           "license_note": "AGPL or commercial; do not add to runtime without a project-license decision."
         },
         {
@@ -33,7 +33,7 @@
           "version": "unknown",
           "available": true,
           "pages": 2,
-          "elapsed_ms": 11.74,
+          "elapsed_ms": 12.73,
           "note": "Rendering backend; layout/text metrics come from pdfplumber."
         }
       ]
