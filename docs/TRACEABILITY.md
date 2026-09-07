@@ -1,0 +1,29 @@
+# Requirement traceability
+
+The table maps the approved plan to the implemented review surface. File names are intentionally concrete so an evaluator can move from a requirement to the behavior that demonstrates it.
+
+| Requirement | Implementation surface | Verification/demo path |
+|---|---|---|
+| Immutable claims and exact provenance | `source_claims`, `claim_evidence`, `page_artifacts`, `evidence_anchors`; `app/provenance.py` | Evidence inspector and fact detail endpoints |
+| Numerical and semantic facts | `app/parser.py`, `app/normalization.py`, `app/pipeline.py` | Normalization tests; seeded revenue/director cases |
+| Deterministic normalization | `app/normalization.py` | `tests/test_normalization.py` |
+| Temporal reasoning | `parse_period`, interval/modality fields, `app/knowledge.py` | FY25 vintage reconciliation and director supersedence cases |
+| Corroboration/contradiction/reconciliation/supersedence | `relationship_assessments`, `compare_claim_pair` | Cases endpoint and relationship tests |
+| Entity and predicate evolution | `app/registry.py`, `entities`, `predicates`, alias/decision tables | Registry endpoints and seeded aliases |
+| Incremental ingestion | content hash deduplication, durable `runs`, `run_events`, checkpoints | Upload/retry/cancel/history routes |
+| Knowledge Diff | `knowledge_changes`, `/api/v1/changes` | Changes view and change publication tests |
+| Human review and stale safety | `reviews`, review/revoke endpoints, fact-version checks | Review view; `tests/test_api.py` review flow |
+| Trust Gate | `resolve_fact`, `/api/v1/resolve` | Strict block, human-preference policy, and inspector panel |
+| Large/many PDF path | disk-backed upload, configurable 100 MB/2,000 page limits, page routing | Document upload contract; corpus preparation script |
+| Native plus visual fallback | parser quality flags, rendered page fallback, `page_artifacts` dispositions | IMF image-only-cover case and parser docs |
+| Hybrid retrieval | FTS5 lexical lane, optional stored embeddings, reciprocal rank fusion | `/api/v1/search` metadata and retrieval tests |
+| Provider isolation and budget | role settings, response cache, reservations/settlement, model-call ledger | Budget endpoint; no-key demo; model harness reports |
+| Prompt-injection safety | `app/security.py`, untrusted prompt boundaries, quarantine status | Five-case offline security report |
+| Superjoin-inspired UI | `web/src/styles.css`, `web/src/main.jsx` | Forest/green palette, facts table, evidence/trust side panel |
+| Evaluation and observability | `evals/`, `docs/EVALUATION.md`, run events, health/budget endpoints | CI and reproducible scripts |
+| Easy setup and demo mode | `Dockerfile`, `compose.yaml`, seeded replay records, README | `docker compose up --build`, localhost:8080 |
+
+## Explicitly bounded claims
+
+The repository does not claim live model quality without a provider key, does not claim the full 511-page parser benchmark without the source-verified archive, and does not redistribute starter PDFs before a rights audit. Those boundaries are part of the evidence-first behavior and are reflected in PLAN.md and the reports.
+
