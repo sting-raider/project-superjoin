@@ -10,7 +10,14 @@ from typing import Any
 from .budget import BudgetExceeded, estimate_cost, reserve, settle
 from .config import settings
 from .db import db, utc_now
-from .providers import ProviderError, available, embed, input_hash, structured_chat
+from .providers import (
+    ProviderError,
+    available,
+    embed,
+    input_hash,
+    provider_identity,
+    structured_chat,
+)
 from .security import untrusted_document_block
 
 REGISTRY_RELATIONS = {"equivalent", "broader", "narrower", "related", "new", "uncertain"}
@@ -385,7 +392,7 @@ def _embedding_candidates(
 
 def _registry_embedding(text: str, run_id: str | None) -> list[float]:
     model = settings.embedding_model
-    digest = input_hash("registry-embedding-v1", text)
+    digest = input_hash("registry-embedding-v1", provider_identity("embedding", model), text)
     with db() as conn:
         cached = conn.execute(
             "SELECT response_json FROM model_cache WHERE role='registry-embedding' AND model=? AND input_hash=?",
@@ -450,8 +457,8 @@ def _semantic_resolution(
         ],
     }
     compact = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    digest = input_hash("registry-resolution-v1", workspace_id, compact)
     model = settings.reasoning_model
+    digest = input_hash("registry-resolution-v1", workspace_id, provider_identity("reasoning", model), compact)
     with db() as conn:
         cached = conn.execute(
             "SELECT response_json FROM model_cache WHERE role='registry-resolution' AND model=? AND input_hash=?",

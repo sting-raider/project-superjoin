@@ -107,6 +107,35 @@ def _role_config(role: str) -> dict[str, Any]:
     return {key: getattr(settings, attribute) for key, attribute in fields.items()}
 
 
+def provider_identity(role: str, model: str | None = None) -> str:
+    """Return a nonsecret cache identity for one compatible provider lane."""
+
+    canonical = _canonical_role(role)
+    config = _role_config(canonical)
+    chosen_model = model or str(config.get("model") or "")
+    shape = [
+        canonical,
+        str(config.get("base_url") or ""),
+        str(config.get("path") or ""),
+        chosen_model,
+        str(config.get("auth_header") or ""),
+        str(config.get("auth_scheme") or ""),
+        str(config.get("send_model")),
+        str(config.get("structured_output_mode") or ""),
+    ]
+    if canonical == "embedding":
+        shape.extend(
+            [
+                str(settings.embedding_dimensions),
+                str(settings.embedding_include_dimensions),
+                str(settings.embedding_task_type),
+            ]
+        )
+    else:
+        shape.extend([str(config.get("max_output_tokens") or "")])
+    return input_hash("provider-config-v1", *shape)
+
+
 def available(role: str | None = None) -> bool:
     """Return whether a role has enough configuration to attempt a call.
 

@@ -16,7 +16,14 @@ from .db import db, utc_now
 from .normalization import parse_numeric
 from .parser import candidate_claims, parse_pdf
 from .provenance import persist_anchor, persist_interpretation, persist_page_artifacts
-from .providers import ProviderError, available, input_hash, structured_chat, vision_chat
+from .providers import (
+    ProviderError,
+    available,
+    input_hash,
+    provider_identity,
+    structured_chat,
+    vision_chat,
+)
 from .registry import register_workspace_claims
 from .security import untrusted_document_block, validate_model_claim
 
@@ -167,6 +174,7 @@ def _extract_document_batches(
             }
             digest = input_hash(
                 EXTRACTION_PROMPT_VERSION,
+                provider_identity("extraction"),
                 filename,
                 json.dumps(batch_payload, ensure_ascii=False, sort_keys=True),
             )
@@ -274,7 +282,7 @@ def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str 
     source_payload = {"candidates": candidates[:80], "pages": source_pages}
     compact = json.dumps(source_payload, ensure_ascii=False)
     chosen_model = settings.extraction_model
-    digest = input_hash(EXTRACTION_PROMPT_VERSION, filename, compact)
+    digest = input_hash(EXTRACTION_PROMPT_VERSION, provider_identity("extraction", chosen_model), filename, compact)
     with db() as conn:
         cached = conn.execute("SELECT response_json,estimated_cost FROM model_cache WHERE role=? AND model=? AND input_hash=?", ("extraction", chosen_model, digest)).fetchone()
     if cached:
@@ -330,7 +338,7 @@ def _claim_envelope(data: Any) -> _ClaimEnvelope | None:
 def _repair_model_extract(compact: str, filename: str, run_id: str, model: str, candidates: list[dict[str, Any]], source_pages: list[dict[str, Any]]) -> Any | None:
     """Make one explicit corrective request before quarantining malformed output."""
 
-    digest = input_hash(EXTRACTION_PROMPT_VERSION, "repair", filename, compact)
+    digest = input_hash(EXTRACTION_PROMPT_VERSION, "repair", provider_identity("extraction", model), filename, compact)
     with db() as conn:
         cached = conn.execute("SELECT response_json FROM model_cache WHERE role=? AND model=? AND input_hash=?", ("extraction", model, digest)).fetchone()
     if cached:
@@ -412,7 +420,7 @@ def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_i
     if not image:
         _update_run(run_id, 45, f"Page {page_index + 1} requires visual review; renderer unavailable")
         return []
-    digest = input_hash(VISION_PROMPT_VERSION, filename, str(page_index), hashlib.sha256(image).hexdigest())
+    digest = input_hash(VISION_PROMPT_VERSION, provider_identity("vision", settings.vision_model), filename, str(page_index), hashlib.sha256(image).hexdigest())
     model = settings.vision_model
     with db() as conn:
         cached = conn.execute("SELECT response_json FROM model_cache WHERE role=? AND model=? AND input_hash=?", ("vision", model, digest)).fetchone()

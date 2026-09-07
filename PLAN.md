@@ -211,6 +211,9 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   Retry attempts are persisted alongside model-call telemetry; reservations
   cover the configured retry envelope and successful settlement charges the
   attempts actually consumed, keeping the cumulative budget conservative.
+  Provider cache and extraction-checkpoint fingerprints include the role,
+  endpoint/path, model, and request-shape identity (never the secret), so
+  switching compatible services cannot replay another endpoint's output.
 - Trust Gate temporal semantics now overlay `fact_versions` by their immutable
   workspace knowledge revision, so `known_at_revision` returns the historical
   value and version identifier rather than filtering the current fact's local

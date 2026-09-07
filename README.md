@@ -54,7 +54,9 @@ Transient HTTP 429/5xx responses use the configured `AI_RETRY_ATTEMPTS` and
 `AI_RETRY_BACKOFF_SECONDS` policy (including `Retry-After` when supplied); the
 final provider error is retained when retries are exhausted. The budget ledger
 reserves the configured retry envelope and records the attempts actually used,
-so retries cannot silently exceed the cumulative cap.
+so retries cannot silently exceed the cumulative cap. Cache fingerprints also
+include the nonsecret endpoint/path/model identity, so changing providers does
+not replay another endpoint's response.
 
 The starter PDFs are third-party publications and are not committed while
 redistribution permission is unresolved. Use

@@ -12,7 +12,7 @@ import numpy as np
 from .budget import BudgetExceeded, estimate_cost, reserve, settle
 from .config import settings
 from .db import db, rows_to_dicts, utc_now
-from .providers import ProviderError, available, embed
+from .providers import ProviderError, available, embed, provider_identity
 
 
 def lexical_claims(workspace_id: str, query: str, limit: int = 30) -> list[dict[str, Any]]:
@@ -107,7 +107,7 @@ def embed_claim(claim_id: str, space_id: str) -> dict[str, Any]:
     if not claim or not space:
         raise ValueError("claim or embedding space not found")
     text = identity_text(dict(claim)) + "\n" + evidence_text(dict(claim))
-    content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    content_hash = hashlib.sha256((provider_identity("embedding", space["model"]) + "\n" + text).encode("utf-8")).hexdigest()
     with db() as conn:
         cached = conn.execute("SELECT dimensions,content_hash FROM embeddings e JOIN embedding_spaces s ON s.id=e.space_id WHERE e.space_id=? AND e.claim_id=?", (space_id, claim_id)).fetchone()
     if cached and cached["content_hash"] == content_hash:
@@ -146,7 +146,7 @@ def embed_query(workspace_id: str, query: str, space_id: str | None = None) -> l
             space = conn.execute("SELECT * FROM embedding_spaces WHERE status='active' AND (workspace_id=? OR workspace_id IS NULL) ORDER BY workspace_id IS NULL,created_at DESC LIMIT 1", (workspace_id,)).fetchone()
         if not space or not conn.execute("SELECT 1 FROM embeddings e JOIN claims c ON c.id=e.claim_id WHERE e.space_id=? AND c.workspace_id=? LIMIT 1", (space["id"], workspace_id)).fetchone():
             return None
-    digest = hashlib.sha256(f"query-v1:{space['id']}:{query}".encode()).hexdigest()
+    digest = hashlib.sha256(f"query-v1:{space['id']}:{provider_identity('embedding', space['model'])}:{query}".encode()).hexdigest()
     with db() as conn:
         cached = conn.execute("SELECT response_json FROM model_cache WHERE role='embedding-query' AND model=? AND input_hash=?", (space["model"], digest)).fetchone()
     if cached:

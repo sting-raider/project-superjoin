@@ -140,6 +140,24 @@ def test_empty_role_configuration_does_not_enable_shared_provider(monkeypatch) -
     assert providers.available("embedding") is False
 
 
+def test_provider_cache_identity_includes_endpoint_and_request_shape(monkeypatch) -> None:
+    first = replace(
+        settings,
+        extraction_base_url="https://one.example/v1",
+        extraction_model="same-model",
+        extraction_chat_path="/chat/completions",
+        extraction_api_key="first-secret",
+    )
+    monkeypatch.setattr(providers, "settings", first)
+    first_identity = providers.provider_identity("extraction")
+    same_endpoint_new_key = replace(first, extraction_api_key="second-secret")
+    monkeypatch.setattr(providers, "settings", same_endpoint_new_key)
+    assert providers.provider_identity("extraction") == first_identity
+    second = replace(first, extraction_base_url="https://two.example/v1")
+    monkeypatch.setattr(providers, "settings", second)
+    assert providers.provider_identity("extraction") != first_identity
+
+
 def test_transient_provider_failure_uses_retry_after_without_silent_fallback(monkeypatch) -> None:
     configured = replace(
         settings,

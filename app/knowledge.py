@@ -9,7 +9,7 @@ from .budget import BudgetExceeded, estimate_cost, reserve, settle
 from .config import settings
 from .db import db, utc_now
 from .normalization import compare_numeric
-from .providers import ProviderError, available, input_hash, structured_chat
+from .providers import ProviderError, available, input_hash, provider_identity, structured_chat
 from .security import untrusted_document_block
 
 _CONTEXTUAL_RELATIONSHIP_MARKERS = (
@@ -154,7 +154,7 @@ def relationship_cache_fingerprint(a: Any, b: Any) -> str:
 
     left, right = sorted((a, b), key=lambda item: item["id"])
     compact = json.dumps(_relationship_payload(left, right), ensure_ascii=False, sort_keys=True)
-    return input_hash("relationship-v1", compact)
+    return input_hash("relationship-v1", provider_identity("reasoning"), compact)
 
 
 def _needs_semantic_relationship_review(a: Any, b: Any, relationship_type: str) -> bool:
