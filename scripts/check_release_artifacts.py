@@ -38,8 +38,25 @@ def tracked_files() -> list[str]:
     return [item.decode("utf-8") for item in result.stdout.split(b"\0") if item]
 
 
+def historical_files() -> list[str]:
+    result = subprocess.run(
+        ["git", "rev-list", "--objects", "--all"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    paths: list[str] = []
+    for line in result.stdout.splitlines():
+        parts = line.split(maxsplit=1)
+        if len(parts) == 2:
+            paths.append(parts[1])
+    return paths
+
+
 def check() -> dict[str, Any]:
     paths = tracked_files()
+    history = historical_files()
     source_artifacts = [
         path
         for path in paths
@@ -50,6 +67,11 @@ def check() -> dict[str, Any]:
         for path in paths
         if set(Path(path).parts) & _GENERATED_PARTS
     ]
+    historical_source_artifacts = [
+        path
+        for path in history
+        if Path(path).suffix.casefold() in _SOURCE_SUFFIXES
+    ]
     audit = AUDIT.read_text(encoding="utf-8")
     gate_phrases = (
         "do not commit source PDFs",
@@ -58,9 +80,12 @@ def check() -> dict[str, Any]:
     )
     missing_gate_phrases = [phrase for phrase in gate_phrases if phrase not in audit]
     return {
-        "status": "clean" if not source_artifacts and not generated_runtime and not missing_gate_phrases else "blocked",
+        "status": "clean"
+        if not source_artifacts and not generated_runtime and not historical_source_artifacts and not missing_gate_phrases
+        else "blocked",
         "tracked_source_artifacts": source_artifacts,
         "tracked_generated_runtime": generated_runtime,
+        "historical_source_artifacts": historical_source_artifacts,
         "missing_rights_gate_phrases": missing_gate_phrases,
         "publication_permission": "not established; source-specific review remains required",
     }

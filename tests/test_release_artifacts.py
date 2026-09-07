@@ -20,5 +20,6 @@ def test_release_preflight_keeps_unapproved_source_material_out_of_git() -> None
     assert report["status"] == "clean"
     assert report["tracked_source_artifacts"] == []
     assert report["tracked_generated_runtime"] == []
+    assert report["historical_source_artifacts"] == []
     assert report["missing_rights_gate_phrases"] == []
     assert "not established" in report["publication_permission"]
