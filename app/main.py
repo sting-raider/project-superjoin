@@ -216,10 +216,10 @@ def facts(workspace_id: str = "delhivery", q: str = "", status: str | None = Non
 
 
 @app.get("/api/v1/search")
-def search(workspace_id: str = "delhivery", q: str = "", limit: int = 20) -> dict[str, Any]:
+def search(workspace_id: str = "delhivery", q: str = "", limit: int = 20, space_id: str | None = None) -> dict[str, Any]:
     if not q.strip():
-        return {"items": [], "lanes": {"lexical": 0, "dense": 0, "hybrid": 0}, "embedding_available": False}
-    return search_claims(workspace_id, q, max(1, min(limit, 100)))
+        return {"items": [], "lanes": {"lexical": 0, "dense": 0, "hybrid": 0}, "embedding_available": False, "embedding_error": None}
+    return search_claims(workspace_id, q, max(1, min(limit, 100)), space_id=space_id)
 
 
 @app.get("/api/v1/facts/{fact_id}")

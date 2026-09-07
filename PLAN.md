@@ -140,6 +140,13 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   deterministic candidates and remains visible in model-call/cache telemetry.
   Visual responses use the same envelope validation before their evidence is
   marked visual-region and routed through the Trust Gate review boundary.
+- Normal `/api/v1/search` requests now attempt a query embedding only when an
+  active compatible embedding space already contains workspace vectors. The
+  query vector is normalized, budgeted, and cached by space/query fingerprint;
+  lexical results remain available when no provider/index exists, and the API
+  reports an embedding error instead of hiding a failed dense lane. A local
+  regression verifies one provider call followed by a cached lexical+dense
+  fusion result.
 
 ### Resolved implementation simplifications
 

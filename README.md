@@ -51,8 +51,10 @@ number scales, percentages, ranges, bounds, fiscal periods, and data-vintage
 qualifiers. A bounded exact-context relationship lane identifies corroboration,
 contradiction, reconciliation, and temporal supersedence. SQLite FTS5 provides
 lexical retrieval; optional provider embeddings are stored with model and
-dimension metadata and fused with lexical candidates through reciprocal rank
-fusion.
+dimension metadata. When an active space has vectors, a normal search query
+gets one budgeted, cached embedding and is fused with lexical candidates
+through reciprocal rank fusion; absent or failed embedding capability falls
+back to clearly labeled lexical results.
 
 The Trust Gate is conservative by construction. Contested, context-ambiguous,
 quarantined, or stale-reviewed facts do not silently become executable values.
