@@ -93,6 +93,11 @@ The supplied screenshots establish the visual direction: forest green, bright gr
 - The runtime already records parser/version, page quality flags, evidence
   anchors, and visual-review dispositions so the full corpus comparison can be
   run without changing the claim contract.
+- The extraction and embedding benchmark harnesses have been run in their
+  credential-free path. Both reports explicitly say `skipped` because no
+  provider endpoint/key is configured; no live model quality or cost result is
+  being claimed. The candidates and exact comparison contract remain recorded
+  in `docs/MODEL_SELECTION.md` and the two reports under `evals/reports/`.
 
 ## 3. Architecture and technology choices
 

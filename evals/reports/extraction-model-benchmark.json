@@ -1,0 +1,10 @@
+{
+  "status": "skipped",
+  "reason": "AI_BASE_URL and AI_API_KEY are not configured",
+  "role": "extraction",
+  "candidates": [
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash"
+  ],
+  "cases": 1
+}

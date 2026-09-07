@@ -1,0 +1,10 @@
+{
+  "status": "skipped",
+  "reason": "AI_BASE_URL and AI_API_KEY are not configured",
+  "role": "embedding",
+  "candidates": [
+    "gemini-embedding-001",
+    "gemini-embedding-2"
+  ],
+  "cases": 1
+}
