@@ -1434,9 +1434,9 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] Missing context, incompatible embeddings, and unsupported capabilities fail visibly.
 - [x] Conflicts and inadequate evidence cannot silently pass the strict Trust Gate.
 - [x] Native and visual document prompt-injection fixtures cannot override instructions, verification, or strict fact resolution.
-- [ ] Human decisions are immutable/auditable, revocable, and invalidated appropriately by new evidence.
+- [x] Human decisions are immutable/auditable, revocable, and invalidated appropriately by new evidence.
 - [x] Duplicate ingestion makes no paid calls; incremental ingestion preserves previous work.
-- [ ] Crash/resume, cancellation, and transactional publication pass.
+- [x] Crash/resume, cancellation, and transactional publication pass.
 - [ ] Gold evaluation and mandatory performance reports contain measured results and limitations.
 - [x] Any unrun 1,000-page/50,000-claim benchmarks are labeled accurately and do not block the finished core submission.
 - [x] Cumulative paid API usage remains within US$20.
