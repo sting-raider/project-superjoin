@@ -220,6 +220,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   Provider cache and extraction-checkpoint fingerprints include the role,
   endpoint/path, model, and request-shape identity (never the secret), so
   switching compatible services cannot replay another endpoint's output.
+- The starter redistribution audit was refreshed at commit `f2148af`. Official
+  checks now record restrictive terms for [Delhivery](https://www.delhivery.com/terms-and-conditions),
+  the [India Budget site](https://www.indiabudget.gov.in/budget2023-24/website-policies.php),
+  and the [IMF](https://www.imf.org/en/about/copyright-and-terms); the BSE filing
+  and RBI report remain unresolved. No source PDFs, page renders, copied
+  excerpts, or source-text-bearing recordings are cleared for publication.
 - Trust Gate temporal semantics now overlay `fact_versions` by their immutable
   workspace knowledge revision, so `known_at_revision` returns the historical
   value and version identifier rather than filtering the current fact's local
