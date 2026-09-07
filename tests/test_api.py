@@ -159,3 +159,23 @@ def test_runs_surface_is_available_for_observability() -> None:
         response = client.get("/api/v1/runs", params={"workspace_id": "delhivery"})
         assert response.status_code == 200
         assert isinstance(response.json()["items"], list)
+
+
+def test_demo_replay_endpoints_are_recorded_and_reset_scoped() -> None:
+    with TestClient(app) as client:
+        baseline = client.post("/api/v1/demo/replay/start")
+        assert baseline.status_code == 200
+        assert baseline.json()["stage"] == "baseline_ready"
+        assert len(client.get("/api/v1/documents", params={"workspace_id": "delhivery"}).json()["items"]) == 2
+
+        replayed = client.post("/api/v1/demo/replay/advance")
+        assert replayed.status_code == 200
+        assert replayed.json()["stage"] == "replayed"
+        assert replayed.json()["model_calls"] == 0
+        assert "no API calls" in replayed.json()["limitation"]
+        assert client.get("/api/v1/demo/replay").json()["recorded"] is True
+        assert len(client.get("/api/v1/documents", params={"workspace_id": "delhivery"}).json()["items"]) == 3
+
+        reset = client.post("/api/v1/demo/reset")
+        assert reset.status_code == 200
+        assert len(client.get("/api/v1/documents", params={"workspace_id": "delhivery"}).json()["items"]) == 3

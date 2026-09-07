@@ -19,6 +19,18 @@ DEMO_WORKSPACES = [
     {"id": "india-macro", "name": "India Macroeconomy", "description": "Institutional reports with overlapping macroeconomic series and vintages."},
 ]
 
+# Replay metadata is a demo/evaluation artifact.  It selects a recorded
+# checkpoint at the demo boundary; production extraction and reasoning never
+# inspect these identifiers.
+DEMO_REPLAY = {
+    "id": "recorded-delivery-replay",
+    "workspace_id": "delhivery",
+    "baseline_document_ids": ["delhivery-prospectus", "delhivery-annual"],
+    "added_document_ids": ["delhivery-presentation"],
+    "original_runtime_ms": None,
+    "original_cost_usd": None,
+}
+
 DEMO_DOCUMENTS = [
     {"id": "delhivery-prospectus", "workspace_id": "delhivery", "name": "Delhivery Prospectus 2022 · curated excerpt", "publisher": "Delhivery Limited", "source_url": "https://www.delhivery.com/wp-content/uploads/2022/05/Delhivery-Limited-Prospectus-1-min.pdf", "page_count": 100, "published_at": "2022-05-14"},
     {"id": "delhivery-annual", "workspace_id": "delhivery", "name": "Delhivery Annual Report FY24 · curated excerpt", "publisher": "Delhivery Limited", "source_url": "https://www.delhivery.com/uploads/2024/08/Annual_Report_FY24.pdf", "page_count": 100, "published_at": "2024-08-01"},

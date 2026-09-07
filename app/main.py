@@ -467,6 +467,33 @@ def cases() -> dict[str, Any]:
     return {"items": items}
 
 
+@app.get("/api/v1/demo/replay")
+def demo_replay() -> dict[str, Any]:
+    if not settings.demo_mode:
+        raise HTTPException(404, "Demo Mode is disabled")
+    from .seed import replay_status
+
+    return replay_status()
+
+
+@app.post("/api/v1/demo/replay/start")
+def demo_replay_start() -> dict[str, Any]:
+    if not settings.demo_mode:
+        raise HTTPException(404, "Demo Mode is disabled")
+    from .seed import start_replay
+
+    return start_replay()
+
+
+@app.post("/api/v1/demo/replay/advance")
+def demo_replay_advance() -> dict[str, Any]:
+    if not settings.demo_mode:
+        raise HTTPException(404, "Demo Mode is disabled")
+    from .seed import advance_replay
+
+    return advance_replay()
+
+
 def _resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
     workspace_id = _workspace_or_default(payload.get("workspace_id"))
     subject = str(payload.get("subject") or "")
@@ -538,35 +565,9 @@ def settings_view() -> dict[str, Any]:
 def reset_demo() -> dict[str, str]:
     if not settings.demo_mode:
         raise HTTPException(404, "Demo Mode is disabled")
-    with db() as conn:
-        for table in (
-            "reviews",
-            "fact_memberships",
-            "fact_versions",
-            "claim_evidence",
-            "claim_interpretations",
-            "changes",
-            "relationships",
-            "facts",
-            "claims_fts",
-            "claims",
-            "evidence_anchors",
-            "page_artifacts",
-            "documents",
-            "run_events",
-            "runs",
-            "entity_aliases",
-            "predicate_aliases",
-            "registry_decisions",
-            "entities",
-            "predicates",
-            "embeddings",
-            "embedding_spaces",
-        ):
-            conn.execute(f"DELETE FROM {table}")
-        conn.execute("UPDATE workspaces SET active_revision=1")
-    from .seed import seed_demo
+    from .seed import clear_demo_workspace_data, seed_demo
 
+    clear_demo_workspace_data()
     seed_demo()
     return {"status": "reset"}
 
