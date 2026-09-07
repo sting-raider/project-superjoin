@@ -5,6 +5,7 @@ import json
 
 from .db import db, utc_now
 from .demo_data import DEMO_CASES, DEMO_CLAIMS, DEMO_DOCUMENTS, DEMO_RELATIONSHIPS, DEMO_WORKSPACES
+from .knowledge import rebuild_workspace
 from .provenance import page_artifact_id, persist_anchor, persist_interpretation
 from .registry import register_workspace_claims
 
@@ -53,45 +54,8 @@ def seed_demo() -> None:
                 VALUES(?,?,?,?,?,?,?,?,?)""",
                 (relationship["id"], relationship["workspace_id"], relationship["claim_a"], relationship["claim_b"], relationship["relationship_type"], relationship["reason"], json.dumps(relationship["dimensions"]), relationship["confidence"], utc_now()),
             )
-        _seed_facts(conn)
         for case in DEMO_CASES:
             conn.execute("INSERT OR IGNORE INTO changes(id,workspace_id,run_id,kind,summary,details_json,created_at) VALUES(?,?,?,?,?,?,?)", (f"change-{case['id']}", case["workspace_id"], "demo-seed", "demo_case", case["title"], json.dumps(case), utc_now()))
     for workspace in DEMO_WORKSPACES:
         register_workspace_claims(workspace["id"])
-
-
-def _seed_facts(conn) -> None:
-    rows = conn.execute("SELECT id,workspace_id,subject,predicate,normalized_value,raw_value,value_type,unit,period,modality,scope,evidence_json FROM claims ORDER BY id").fetchall()
-    groups: dict[str, dict[str, object]] = {}
-    for row in rows:
-        fact_id = f"fact-{row['id']}"
-        status = "SUPPORTED"
-        reason = "One grounded source claim is available."
-        if row["id"] in {"clm-delhivery-revenue-annual", "clm-delhivery-revenue-presentation"}:
-            fact_id, status, reason = "fact-delhivery-revenue-fy24", "CORROBORATED", "Equivalent after crore/million normalization; presentation value is rounded."
-        elif row["id"] in {"clm-survey-gdp-fy25", "clm-rbi-gdp-fy25"}:
-            fact_id, status, reason = "fact-india-gdp-fy25", "SUPPORTED", "Context-specific data vintages remain visible as separate source claims."
-        elif row["id"] in {"clm-rbi-gdp-fy26", "clm-imf-gdp-fy26"}:
-            fact_id, status, reason = "fact-india-gdp-fy26", "CONTESTED", "Competing institutional forecasts; strict Trust Gate blocks an unqualified value."
-        group = groups.setdefault(fact_id, {"row": row, "status": status, "reason": reason, "evidence": [], "claims": []})
-        evidence = json.loads(row["evidence_json"])
-        group["evidence"].append({"claim_id": row["id"], **evidence})
-        group["claims"].append(row["id"])
-    for fact_id, group in groups.items():
-        row = group["row"]
-        conn.execute(
-            """INSERT OR IGNORE INTO facts
-            (id,workspace_id,subject,predicate,normalized_value,display_value,value_type,unit,period,modality,scope,status,reason,evidence_json,revision,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (fact_id, row["workspace_id"], row["subject"], row["predicate"], row["normalized_value"], row["raw_value"], row["value_type"], row["unit"], row["period"], row["modality"], row["scope"], group["status"], group["reason"], json.dumps(group["evidence"], ensure_ascii=False), 1, utc_now()),
-        )
-        conn.execute("UPDATE facts SET status=?,reason=?,evidence_json=?,updated_at=? WHERE id=?", (group["status"], group["reason"], json.dumps(group["evidence"], ensure_ascii=False), utc_now(), fact_id))
-        version_id = f"{fact_id}-v1"
-        conn.execute(
-            """INSERT OR IGNORE INTO fact_versions
-            (id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?)""",
-            (version_id, fact_id, 1, row["normalized_value"], row["raw_value"], group["status"], group["reason"], 1, json.dumps(group["evidence"], ensure_ascii=False), utc_now()),
-        )
-        for claim_id in group["claims"]:
-            conn.execute("INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)", (version_id, claim_id, "supporting", utc_now()))
+        rebuild_workspace(workspace["id"], advance_revision=False)

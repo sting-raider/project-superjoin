@@ -115,39 +115,194 @@ def _validated_semantic_result(data: Any, claim_a: str, claim_b: str) -> tuple[s
     return relationship_type, reason, dimensions, confidence
 
 
-def rebuild_workspace(workspace_id: str, run_id: str | None = None) -> None:
+def rebuild_workspace(
+    workspace_id: str, run_id: str | None = None, advance_revision: bool = True
+) -> None:
+    """Publish one canonical fact family for each resolved claim context."""
+
     with db() as conn:
-        claims = conn.execute("SELECT c.* FROM claims c JOIN documents d ON d.id=c.document_id WHERE c.workspace_id=? AND c.extraction_status='accepted' AND d.status<>'archived' ORDER BY c.created_at", (workspace_id,)).fetchall()
+        claims = conn.execute(
+            """SELECT c.*,ci.entity_id,ci.predicate_id,
+            e.canonical_name,p.key AS canonical_predicate
+            FROM claims c JOIN documents d ON d.id=c.document_id
+            LEFT JOIN claim_interpretations ci ON ci.claim_id=c.id
+              AND ci.version=(SELECT MAX(ci2.version) FROM claim_interpretations ci2 WHERE ci2.claim_id=c.id)
+            LEFT JOIN entities e ON e.id=ci.entity_id
+            LEFT JOIN predicates p ON p.id=ci.predicate_id
+            WHERE c.workspace_id=? AND c.extraction_status='accepted' AND d.status<>'archived'
+            ORDER BY c.created_at,c.id""",
+            (workspace_id,),
+        ).fetchall()
         current_workspace = conn.execute("SELECT active_revision FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
-        publication_revision = int(current_workspace["active_revision"] if current_workspace else 0) + 1
+        current_revision = int(current_workspace["active_revision"] if current_workspace else 0)
+        publication_revision = current_revision + 1 if advance_revision else current_revision
+        groups: dict[tuple[str, ...], list[Any]] = {}
+        identities: dict[tuple[str, ...], tuple[str, str]] = {}
         for claim in claims:
-            fact_id = f"fact-claim-{claim['id']}"
-            status = "SUPPORTED"
-            reason = "One grounded source claim is available."
-            related = conn.execute("SELECT relationship_type,reason FROM relationships WHERE workspace_id=? AND (claim_a=? OR claim_b=?)", (workspace_id, claim["id"], claim["id"])).fetchall()
-            types = {row["relationship_type"] for row in related}
-            if "UNCERTAIN" in types:
-                status, reason = "UNRESOLVED", next((row["reason"] for row in related if row["relationship_type"] == "UNCERTAIN"), "Semantic relationship assessment abstained.")
-            elif "CONTRADICTS" in types:
-                status, reason = "CONTESTED", next((row["reason"] for row in related if row["relationship_type"] == "CONTRADICTS"), reason)
-            elif "RECONCILES" in types:
-                status, reason = "SUPPORTED", next((row["reason"] for row in related if row["relationship_type"] == "RECONCILES"), reason)
-            elif "CORROBORATES" in types:
-                status, reason = "CORROBORATED", next((row["reason"] for row in related if row["relationship_type"] == "CORROBORATES"), reason)
-            updated_at = utc_now()
-            conn.execute(
-                """INSERT INTO facts(id,workspace_id,subject,predicate,normalized_value,display_value,value_type,unit,period,modality,scope,status,reason,evidence_json,revision,updated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(id) DO UPDATE SET status=excluded.status,reason=excluded.reason,evidence_json=excluded.evidence_json,revision=facts.revision+1,updated_at=excluded.updated_at""",
-                (fact_id, workspace_id, claim["subject"], claim["predicate"], claim["normalized_value"], claim["raw_value"], claim["value_type"], claim["unit"], claim["period"], claim["modality"], claim["scope"], status, reason, claim["evidence_json"], 1, updated_at),
+            subject = claim["canonical_name"] or claim["subject"]
+            predicate = claim["canonical_predicate"] or claim["predicate"]
+            key = (
+                str(claim["entity_id"] or subject).casefold(),
+                str(claim["predicate_id"] or predicate).casefold(),
+                str(claim["period"] or "").casefold(),
+                str(claim["modality"] or "").casefold(),
+                str(claim["scope"] or "").casefold(),
+                str(claim["value_type"] or "").casefold(),
+                str(claim["unit"] or "").casefold(),
             )
-            revision = conn.execute("SELECT revision FROM facts WHERE id=?", (fact_id,)).fetchone()["revision"]
-            version_id = f"{fact_id}-v{revision}"
-            conn.execute("INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (version_id, fact_id, revision, claim["normalized_value"], claim["raw_value"], status, reason, publication_revision, claim["evidence_json"], updated_at))
-            conn.execute("INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)", (version_id, claim["id"], "supporting", updated_at))
-            conn.execute("UPDATE reviews SET stale=1,status='stale' WHERE fact_id=? AND based_on_revision<? AND status='active'", (fact_id, revision))
-        _refresh_membership_facts(conn, workspace_id, publication_revision)
-        conn.execute("UPDATE workspaces SET active_revision=? WHERE id=?", (publication_revision, workspace_id))
+            groups.setdefault(key, []).append(claim)
+            identities[key] = (subject, predicate)
+        active_fact_ids: set[str] = set()
+        for key, members in groups.items():
+            subject, predicate = identities[key]
+            fact_id = _fact_family_id(workspace_id, key)
+            active_fact_ids.add(fact_id)
+            _publish_fact_family(
+                conn,
+                fact_id,
+                workspace_id,
+                subject,
+                predicate,
+                members,
+                publication_revision,
+            )
+        stale = conn.execute(
+            "SELECT id FROM facts WHERE workspace_id=? AND active=1",
+            (workspace_id,),
+        ).fetchall()
+        for row in stale:
+            if row["id"] not in active_fact_ids:
+                conn.execute("UPDATE facts SET active=0,updated_at=? WHERE id=?", (utc_now(), row["id"]))
+                conn.execute(
+                    "UPDATE reviews SET stale=1,status='stale' WHERE fact_id=? AND status='active'",
+                    (row["id"],),
+                )
+        if advance_revision:
+            conn.execute("UPDATE workspaces SET active_revision=? WHERE id=?", (publication_revision, workspace_id))
+
+
+def _fact_family_id(workspace_id: str, key: tuple[str, ...]) -> str:
+    digest = hashlib.sha256(
+        json.dumps([workspace_id, *key], ensure_ascii=False).encode()
+    ).hexdigest()
+    return f"fact-{digest[:24]}"
+
+
+def _publish_fact_family(
+    conn: Any,
+    fact_id: str,
+    workspace_id: str,
+    subject: str,
+    predicate: str,
+    members: list[Any],
+    knowledge_revision: int,
+) -> None:
+    claim_ids = [member["id"] for member in members]
+    placeholders = ",".join("?" for _ in claim_ids)
+    relationships = (
+        conn.execute(
+            f"SELECT relationship_type,reason FROM relationships WHERE workspace_id=? AND claim_a IN ({placeholders}) AND claim_b IN ({placeholders})",
+            (workspace_id, *claim_ids, *claim_ids),
+        ).fetchall()
+        if len(claim_ids) > 1
+        else []
+    )
+    types = {row["relationship_type"] for row in relationships}
+    distinct_values = {str(member["normalized_value"]) for member in members}
+    status, reason = "SUPPORTED", "One grounded source claim is available."
+    if "UNCERTAIN" in types:
+        status, reason = "UNRESOLVED", _relationship_reason(relationships, "UNCERTAIN", "Semantic relationship assessment abstained.")
+    elif "CONTRADICTS" in types:
+        status, reason = "CONTESTED", _relationship_reason(relationships, "CONTRADICTS", "Grounded claims report incompatible values for the same context.")
+    elif "RECONCILES" in types and len(distinct_values) > 1:
+        status, reason = "UNRESOLVED", _relationship_reason(relationships, "RECONCILES", "Contextual alternatives require an explicit qualifier.")
+    elif "CORROBORATES" in types:
+        status, reason = "CORROBORATED", _relationship_reason(relationships, "CORROBORATES", "Multiple grounded claims agree after normalization.")
+    representative = max(
+        members,
+        key=lambda member: (
+            int(member["precision"]) if member["precision"] is not None else -1,
+            member["created_at"],
+            member["id"],
+        ),
+    )
+    evidence = []
+    alternatives = []
+    for member in members:
+        source_evidence = json.loads(member["evidence_json"])
+        evidence.append({"claim_id": member["id"], **source_evidence})
+        alternatives.append(
+            {
+                "claim_id": member["id"],
+                "normalized_value": member["normalized_value"],
+                "display_value": member["raw_value"],
+                "period": member["period"],
+                "modality": member["modality"],
+                "scope": member["scope"],
+                "evidence": source_evidence,
+            }
+        )
+    evidence_json = json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+    alternatives_json = json.dumps(alternatives, ensure_ascii=False, sort_keys=True)
+    existing = conn.execute("SELECT * FROM facts WHERE id=?", (fact_id,)).fetchone()
+    state = (
+        representative["normalized_value"],
+        representative["raw_value"],
+        status,
+        reason,
+        evidence_json,
+        alternatives_json,
+    )
+    existing_state = (
+        existing["normalized_value"],
+        existing["display_value"],
+        existing["status"],
+        existing["reason"],
+        existing["evidence_json"],
+        existing["alternatives_json"],
+    ) if existing else None
+    changed = existing_state != state or (existing is not None and not existing["active"])
+    revision = int(existing["revision"]) + 1 if existing and changed else int(existing["revision"]) if existing else 1
+    updated_at = utc_now()
+    conn.execute(
+        """INSERT INTO facts
+        (id,workspace_id,subject,predicate,normalized_value,display_value,value_type,unit,period,modality,scope,status,reason,evidence_json,alternatives_json,active,revision,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET subject=excluded.subject,predicate=excluded.predicate,
+        normalized_value=excluded.normalized_value,display_value=excluded.display_value,
+        value_type=excluded.value_type,unit=excluded.unit,period=excluded.period,
+        modality=excluded.modality,scope=excluded.scope,status=excluded.status,
+        reason=excluded.reason,evidence_json=excluded.evidence_json,
+        alternatives_json=excluded.alternatives_json,active=1,revision=excluded.revision,
+        updated_at=excluded.updated_at""",
+        (
+            fact_id, workspace_id, subject, predicate, representative["normalized_value"],
+            representative["raw_value"], representative["value_type"], representative["unit"],
+            representative["period"], representative["modality"], representative["scope"],
+            status, reason, evidence_json, alternatives_json, 1, revision, updated_at,
+        ),
+    )
+    if not changed and existing:
+        return
+    version_id = f"{fact_id}-v{revision}"
+    conn.execute(
+        "INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,alternatives_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (version_id, fact_id, revision, representative["normalized_value"], representative["raw_value"], status, reason, knowledge_revision, evidence_json, alternatives_json, updated_at),
+    )
+    for member in members:
+        role = "alternative" if status in {"CONTESTED", "UNRESOLVED"} and member["id"] != representative["id"] else "supporting"
+        conn.execute(
+            "INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)",
+            (version_id, member["id"], role, updated_at),
+        )
+    conn.execute(
+        "UPDATE reviews SET stale=1,status='stale' WHERE fact_id=? AND based_on_revision<? AND status='active'",
+        (fact_id, revision),
+    )
+
+
+def _relationship_reason(rows: list[Any], kind: str, fallback: str) -> str:
+    return next((row["reason"] for row in rows if row["relationship_type"] == kind), fallback)
 
 
 def set_document_archived(document_id: str, archived: bool) -> dict[str, Any]:
@@ -171,7 +326,7 @@ def set_document_archived(document_id: str, archived: bool) -> dict[str, Any]:
                 reason = "Source document archived; current Trust Gate resolution is withheld."
                 conn.execute("UPDATE facts SET status='UNRESOLVED',reason=?,revision=?,updated_at=? WHERE id=?", (reason, next_revision, utc_now(), fact["id"]))
                 version_id = f"{fact['id']}-v{next_revision}"
-                conn.execute("INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (version_id, fact["id"], next_revision, fact["normalized_value"], fact["display_value"], "UNRESOLVED", reason, revision, fact["evidence_json"], utc_now()))
+                conn.execute("INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,alternatives_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (version_id, fact["id"], next_revision, fact["normalized_value"], fact["display_value"], "UNRESOLVED", reason, revision, fact["evidence_json"], fact["alternatives_json"], utc_now()))
                 previous_version = f"{fact['id']}-v{fact['revision']}"
                 for membership in conn.execute("SELECT claim_id,role FROM fact_memberships WHERE fact_version_id=?", (previous_version,)).fetchall():
                     conn.execute("INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)", (version_id, membership["claim_id"], membership["role"], utc_now()))
@@ -181,46 +336,9 @@ def set_document_archived(document_id: str, archived: bool) -> dict[str, Any]:
         return {"document": dict(conn.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()), "workspace_id": workspace_id, "revision": revision}
 
 
-def _refresh_membership_facts(conn: Any, workspace_id: str, publication_revision: int) -> None:
-    """Refresh seeded or grouped fact families after their member claims change."""
-
-    facts = conn.execute("SELECT f.* FROM facts f WHERE f.workspace_id=? AND EXISTS (SELECT 1 FROM fact_versions fv WHERE fv.fact_id=f.id AND fv.revision=f.revision)", (workspace_id,)).fetchall()
-    for fact in facts:
-        version = conn.execute("SELECT id FROM fact_versions WHERE fact_id=? AND revision=?", (fact["id"], fact["revision"])).fetchone()
-        claim_ids = [row["claim_id"] for row in conn.execute("SELECT claim_id FROM fact_memberships WHERE fact_version_id=?", (version["id"],)).fetchall()] if version else []
-        if len(claim_ids) < 2:
-            continue
-        placeholders = ",".join("?" for _ in claim_ids)
-        active_count = conn.execute(f"SELECT COUNT(*) AS count FROM claims c JOIN documents d ON d.id=c.document_id WHERE c.id IN ({placeholders}) AND c.extraction_status='accepted' AND d.status<>'archived'", claim_ids).fetchone()["count"]
-        if active_count != len(claim_ids):
-            continue
-        relationships = conn.execute(f"SELECT relationship_type,reason FROM relationships WHERE claim_a IN ({placeholders}) AND claim_b IN ({placeholders})", (*claim_ids, *claim_ids)).fetchall()
-        types = {row["relationship_type"] for row in relationships}
-        status = "SUPPORTED"
-        reason = "Grounded member claims are available."
-        if "UNCERTAIN" in types:
-            status, reason = "UNRESOLVED", next((row["reason"] for row in relationships if row["relationship_type"] == "UNCERTAIN"), "Semantic relationship assessment abstained.")
-        elif "CONTRADICTS" in types:
-            status, reason = "CONTESTED", next((row["reason"] for row in relationships if row["relationship_type"] == "CONTRADICTS"), reason)
-        elif "CORROBORATES" in types:
-            status, reason = "CORROBORATED", next((row["reason"] for row in relationships if row["relationship_type"] == "CORROBORATES"), reason)
-        elif "RECONCILES" in types:
-            reason = next((row["reason"] for row in relationships if row["relationship_type"] == "RECONCILES"), reason)
-        if fact["status"] == status and fact["reason"] == reason:
-            continue
-        next_revision = int(fact["revision"]) + 1
-        updated_at = utc_now()
-        conn.execute("UPDATE facts SET status=?,reason=?,revision=?,updated_at=? WHERE id=?", (status, reason, next_revision, updated_at, fact["id"]))
-        version_id = f"{fact['id']}-v{next_revision}"
-        conn.execute("INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (version_id, fact["id"], next_revision, fact["normalized_value"], fact["display_value"], status, reason, publication_revision, fact["evidence_json"], updated_at))
-        for claim_id in claim_ids:
-            conn.execute("INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)", (version_id, claim_id, "supporting", updated_at))
-        conn.execute("UPDATE reviews SET stale=1,status='stale' WHERE fact_id=? AND status='active'", (fact["id"],))
-
-
 def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | None = None, policy: str = "strict", known_at_revision: int | None = None) -> dict[str, Any]:
     with db() as conn:
-        rows = conn.execute("SELECT * FROM facts WHERE workspace_id=? AND lower(subject)=lower(?) AND lower(predicate)=lower(?) AND (? IS NULL OR period=?) ORDER BY updated_at DESC", (workspace_id, subject, predicate, period, period)).fetchall()
+        rows = conn.execute("SELECT * FROM facts WHERE workspace_id=? AND active=1 AND lower(subject)=lower(?) AND lower(predicate)=lower(?) AND (? IS NULL OR period=?) ORDER BY updated_at DESC", (workspace_id, subject, predicate, period, period)).fetchall()
         if not rows:
             return {"decision": "not_found", "safe_to_use": False, "reason_codes": ["NO_MATCH"], "alternatives": []}
         rows = _versioned_rows(conn, rows, known_at_revision)
@@ -256,7 +374,10 @@ def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | 
         row = rows[0]
         if not row["evidence_json"]:
             return {"decision": "needs_review", "safe_to_use": False, "reason_codes": ["NO_EVIDENCE"], "alternatives": [_fact_payload(row)]}
-        return _allow_payload(row, ["GROUNDED"])
+        reason_codes = ["GROUNDED"]
+        if row["status"] == "CORROBORATED":
+            reason_codes.append("CORROBORATED")
+        return _allow_payload(row, reason_codes)
 
 
 def _allow_payload(row: Any, reason_codes: list[str], review_id: str | None = None, evidence: Any | None = None) -> dict[str, Any]:
@@ -287,7 +408,8 @@ def _aggregate_evidence(rows: list[Any]) -> list[dict[str, Any]]:
 
 
 def _fact_payload(row: Any) -> dict[str, Any]:
-    return {"id": row.get("_fact_version_id", row["id"]) if isinstance(row, dict) else row["id"], "fact_id": row["id"], "subject": row["subject"], "predicate": row["predicate"], "value": row["normalized_value"], "display_value": row["display_value"], "period": row["period"], "modality": row["modality"], "status": row["status"], "evidence": json.loads(row["evidence_json"])}
+    alternatives_json = row.get("alternatives_json", "[]") if isinstance(row, dict) else row["alternatives_json"]
+    return {"id": row.get("_fact_version_id", row["id"]) if isinstance(row, dict) else row["id"], "fact_id": row["id"], "subject": row["subject"], "predicate": row["predicate"], "value": row["normalized_value"], "display_value": row["display_value"], "period": row["period"], "modality": row["modality"], "status": row["status"], "evidence": json.loads(row["evidence_json"]), "claim_alternatives": json.loads(alternatives_json or "[]")}
 
 
 def _versioned_rows(conn: Any, rows: list[Any], known_at_revision: int | None) -> list[Any]:
@@ -304,7 +426,7 @@ def _versioned_rows(conn: Any, rows: list[Any], known_at_revision: int | None) -
         item = dict(row)
         if version:
             if known_at_revision is not None:
-                for key in ("normalized_value", "display_value", "status", "reason", "evidence_json"):
+                for key in ("normalized_value", "display_value", "status", "reason", "evidence_json", "alternatives_json"):
                     item[key] = version[key]
                 item["revision"] = version["revision"]
             item["_fact_version_id"] = version["id"]

@@ -79,8 +79,9 @@ def overview(workspace_id: str = "delhivery") -> dict[str, Any]:
             raise HTTPException(404, "Workspace not found")
         counts = {}
         for table in ("documents", "claims", "facts", "relationships", "changes"):
-            counts[table] = conn.execute(f"SELECT COUNT(*) AS count FROM {table} WHERE workspace_id=?", (workspace_id,)).fetchone()["count"]
-        status_rows = conn.execute("SELECT status,COUNT(*) AS count FROM facts WHERE workspace_id=? GROUP BY status", (workspace_id,)).fetchall()
+            fact_filter = " AND active=1" if table == "facts" else ""
+            counts[table] = conn.execute(f"SELECT COUNT(*) AS count FROM {table} WHERE workspace_id=?{fact_filter}", (workspace_id,)).fetchone()["count"]
+        status_rows = conn.execute("SELECT status,COUNT(*) AS count FROM facts WHERE workspace_id=? AND active=1 GROUP BY status", (workspace_id,)).fetchall()
         latest = conn.execute("SELECT * FROM changes WHERE workspace_id=? ORDER BY created_at DESC LIMIT 8", (workspace_id,)).fetchall()
     return {"workspace": workspace, "counts": counts, "statuses": {row["status"]: row["count"] for row in status_rows}, "latest_changes": rows_to_dicts(latest), "demo": settings.demo_mode}
 
@@ -246,13 +247,13 @@ async def run_events(run_id: str, after_id: int = 0) -> StreamingResponse:
 def facts(workspace_id: str = "delhivery", q: str = "", status: str | None = None, limit: int = 200) -> dict[str, Any]:
     with db() as conn:
         params: list[Any] = [workspace_id]
-        clauses = ["workspace_id=?"]
+        clauses = ["workspace_id=?", "active=1"]
         if q:
             query = " ".join(re.findall(r"[A-Za-z0-9_]+", q))
             rows = conn.execute("SELECT claim_id FROM claims_fts WHERE workspace_id=? AND claims_fts MATCH ? LIMIT ?", (workspace_id, query, limit)).fetchall() if query else []
             claim_ids = [row["claim_id"] for row in rows]
             if claim_ids:
-                clauses.append("(subject LIKE ? OR predicate LIKE ? OR display_value LIKE ? OR id IN (SELECT 'fact-claim-' || id FROM claims WHERE id IN (" + ",".join("?" for _ in claim_ids) + ")))" )
+                clauses.append("(subject LIKE ? OR predicate LIKE ? OR display_value LIKE ? OR id IN (SELECT fv.fact_id FROM fact_versions fv JOIN fact_memberships fm ON fm.fact_version_id=fv.id WHERE fm.claim_id IN (" + ",".join("?" for _ in claim_ids) + ")))" )
                 params.extend([f"%{q}%", f"%{q}%", f"%{q}%", *claim_ids])
             else:
                 clauses.append("(subject LIKE ? OR predicate LIKE ? OR display_value LIKE ?)")
@@ -376,7 +377,7 @@ def changes(workspace_id: str = "delhivery") -> dict[str, Any]:
 @app.get("/api/v1/exports/facts")
 def export_facts(workspace_id: str = "delhivery", format: str = "json") -> Response:
     with db() as conn:
-        rows = rows_to_dicts(conn.execute("SELECT * FROM facts WHERE workspace_id=? ORDER BY subject,predicate,period", (workspace_id,)).fetchall())
+        rows = rows_to_dicts(conn.execute("SELECT * FROM facts WHERE workspace_id=? AND active=1 ORDER BY subject,predicate,period", (workspace_id,)).fetchall())
     normalized_format = format.casefold()
     if normalized_format == "json":
         return JSONResponse(rows)

@@ -63,11 +63,52 @@ def test_live_sqlite_relationship_uses_precision_and_aggregates_evidence(tmp_pat
         rebuild_workspace("w")
         with db() as conn:
             relationship = conn.execute("SELECT relationship_type FROM relationships WHERE workspace_id='w'").fetchone()
+            facts = conn.execute("SELECT id FROM facts WHERE workspace_id='w' AND active=1").fetchall()
+            memberships = conn.execute("SELECT claim_id FROM fact_memberships").fetchall()
         result = resolve_fact("w", "Delhivery", "revenue_from_services", "FY24")
         assert relationship["relationship_type"] == "CORROBORATES"
+        assert len(facts) == 1
+        assert {row["claim_id"] for row in memberships} == {"c1", "c2"}
         assert result["decision"] == "allow"
         assert "CORROBORATED" in result["reason_codes"]
         assert len(result["evidence"]) == 2
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_conflicting_unseen_metric_is_one_fact_family_with_alternatives(tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "fact-family.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "metrics.pdf", "hash", "complete", now))
+            for claim_id, value in (("c1", "0.028"), ("c2", "0.031")):
+                evidence = json.dumps({"text": f"Gross customer churn was {value}."})
+                conn.execute(
+                    """INSERT INTO claims
+                    (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,created_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (claim_id, "w", "d", "Nimbus Cloud", "gross_customer_churn", value, value, "percentage", "%", "FY2026", "actual", "consolidated", evidence, now),
+                )
+        assess_relationships("w")
+        rebuild_workspace("w")
+        with db() as conn:
+            facts = conn.execute("SELECT * FROM facts WHERE workspace_id='w' AND active=1").fetchall()
+            alternatives = json.loads(facts[0]["alternatives_json"])
+            memberships = conn.execute("SELECT role FROM fact_memberships").fetchall()
+        decision = resolve_fact("w", "Nimbus Cloud", "gross_customer_churn", "FY2026")
+        assert len(facts) == 1
+        assert facts[0]["status"] == "CONTESTED"
+        assert {item["normalized_value"] for item in alternatives} == {"0.028", "0.031"}
+        assert {row["role"] for row in memberships} == {"supporting", "alternative"}
+        assert decision["decision"] == "block"
+        assert len(decision["alternatives"][0]["claim_alternatives"]) == 2
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)

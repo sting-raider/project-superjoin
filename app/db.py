@@ -190,6 +190,8 @@ CREATE TABLE IF NOT EXISTS facts (
   status TEXT NOT NULL,
   reason TEXT NOT NULL,
   evidence_json TEXT NOT NULL,
+  alternatives_json TEXT NOT NULL DEFAULT '[]',
+  active INTEGER NOT NULL DEFAULT 1,
   revision INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
 );
@@ -206,6 +208,7 @@ CREATE TABLE IF NOT EXISTS fact_versions (
   effective_from TEXT,
   effective_to TEXT,
   evidence_json TEXT NOT NULL DEFAULT '[]',
+  alternatives_json TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   UNIQUE(fact_id, revision)
 );
@@ -412,6 +415,11 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "entity_relation": "TEXT",
             "predicate_relation": "TEXT",
         },
+        "facts": {
+            "alternatives_json": "TEXT NOT NULL DEFAULT '[]'",
+            "active": "INTEGER NOT NULL DEFAULT 1",
+        },
+        "fact_versions": {"alternatives_json": "TEXT NOT NULL DEFAULT '[]'"},
         "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'", "document_id": "TEXT"},
         "reviews": {
             "status": "TEXT NOT NULL DEFAULT 'active'",

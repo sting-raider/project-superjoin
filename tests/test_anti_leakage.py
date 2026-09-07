@@ -8,6 +8,7 @@ CORE_PRODUCTION_MODULES = (
     "registry.py",
     "knowledge.py",
     "normalization.py",
+    "seed.py",
 )
 
 # These are identifiers from the supplied evaluation corpus. Domain terms such
