@@ -78,6 +78,21 @@ def test_human_preference_is_explicit_and_revision_bound() -> None:
         result = client.post("/api/v1/resolve", json={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26", "policy": "human_preference"})
         assert result.json()["decision"] == "allow"
         assert "HUMAN_PREFERENCE" in result.json()["reason_codes"]
+        revoked = client.post(
+            "/api/v1/reviews",
+            json={
+                "workspace_id": "india-macro",
+                "fact_id": fact_id,
+                "action": "revoke",
+                "rationale": "The named scenario preference is no longer approved.",
+                "revokes_review_id": review.json()["id"],
+            },
+        )
+        assert revoked.status_code == 200
+        blocked = client.post("/api/v1/resolve", json={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26", "policy": "human_preference"})
+        assert blocked.json()["decision"] == "block"
+        reviews = client.get("/api/v1/reviews", params={"workspace_id": "india-macro"}).json()["items"]
+        assert any(item["id"] == review.json()["id"] and item["status"] == "revoked" for item in reviews)
 
 
 def test_upload_rejects_non_pdf_signature() -> None:
@@ -132,6 +147,9 @@ def test_settings_exposes_nonsecret_independent_role_contract() -> None:
 
 def test_document_archive_and_reactivate_are_auditable() -> None:
     with TestClient(app) as client:
+        fact_id = _fact_id(client, "delhivery", "Delhivery", "revenue_from_services", "FY24")
+        review = client.post("/api/v1/reviews", json={"workspace_id": "delhivery", "fact_id": fact_id, "action": "keep_unresolved", "rationale": "Review the source before allowing downstream use."})
+        assert review.status_code == 200
         archive = client.post("/api/v1/documents/delhivery-annual/archive")
         assert archive.status_code == 200
         assert archive.json()["document"]["status"] == "archived"
@@ -144,6 +162,8 @@ def test_document_archive_and_reactivate_are_auditable() -> None:
         assert allowed["decision"] == "allow"
         changes = client.get("/api/v1/changes", params={"workspace_id": "delhivery"}).json()["items"]
         assert any(change["kind"] == "document_archived" for change in changes)
+        reviews = client.get("/api/v1/reviews", params={"workspace_id": "delhivery"}).json()["items"]
+        assert any(item["id"] == review.json()["id"] and item["status"] == "stale" for item in reviews)
 
 
 def test_workspace_create_slugifies_and_rejects_duplicate() -> None:
