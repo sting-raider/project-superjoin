@@ -16,7 +16,7 @@ from .security import untrusted_document_block
 REGISTRY_RELATIONS = {"equivalent", "broader", "narrower", "related", "new", "uncertain"}
 LEXICAL_AUTO_THRESHOLD = 0.94
 EMBEDDING_AUTO_THRESHOLD = 0.90
-SEMANTIC_CANDIDATE_THRESHOLD = 0.34
+SEMANTIC_CANDIDATE_THRESHOLD = 0.68
 
 
 def _id(prefix: str) -> str:

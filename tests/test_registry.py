@@ -91,14 +91,14 @@ def test_semantic_narrower_result_creates_a_distinct_predicate(monkeypatch, tmp_
             },
         )
         result = observe_claim_schema(
-            "w", "Foundry Group", "assembly_line_capacity", "number"
+            "w", "Foundry Group", "manufacturing_line_capacity", "number"
         )["predicate"]
         assert result["status"] == "resolved"
         assert result["relation"] == "narrower"
         assert result["id"] != broad["id"]
         with db() as conn:
             decision = conn.execute(
-                "SELECT action,target_id FROM registry_decisions WHERE kind='predicate' AND source_key='assembly_line_capacity' ORDER BY created_at DESC LIMIT 1"
+                "SELECT action,target_id FROM registry_decisions WHERE kind='predicate' AND source_key='manufacturing_line_capacity' ORDER BY created_at DESC LIMIT 1"
             ).fetchone()
         assert decision["action"] == "narrower"
         assert decision["target_id"] == broad["id"]
