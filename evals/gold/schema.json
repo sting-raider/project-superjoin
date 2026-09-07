@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project SuperJoin gold record",
+  "type": "object",
+  "required": ["record_id", "kind", "workspace_id", "source", "annotation"],
+  "properties": {
+    "record_id": {"type": "string"},
+    "kind": {"enum": ["claim", "relationship", "entity", "predicate"]},
+    "workspace_id": {"type": "string"},
+    "source": {
+      "type": "object",
+      "required": ["document_id", "pdf_page"],
+      "properties": {
+        "document_id": {"type": "string"},
+        "sha256": {"type": ["string", "null"]},
+        "pdf_page": {"type": "integer", "minimum": 1},
+        "printed_page": {"type": ["string", "null"]},
+        "text": {"type": ["string", "null"]},
+        "bbox": {"type": ["array", "null"]}
+      }
+    },
+    "annotation": {"type": "object", "additionalProperties": true},
+    "split": {"enum": ["development", "held_out", "security"]},
+    "rationale": {"type": "string"}
+  }
+}

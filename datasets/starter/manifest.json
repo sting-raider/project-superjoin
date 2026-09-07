@@ -1,0 +1,68 @@
+{
+  "manifest_version": "1.0",
+  "project": "Project SuperJoin",
+  "redistribution_status": "unresolved_until_audited",
+  "source_archive": "superjoin-vit-2026-assignment.pdf",
+  "documents": [
+    {
+      "id": "delhivery-prospectus",
+      "workspace_id": "delhivery",
+      "title": "Delhivery Prospectus 2022",
+      "publisher": "Delhivery Limited",
+      "source_url": "https://www.delhivery.com/wp-content/uploads/2022/05/Delhivery-Limited-Prospectus-1-min.pdf",
+      "expected_pages": 100,
+      "sha256": null,
+      "retained_evidence_pages": [88]
+    },
+    {
+      "id": "delhivery-annual",
+      "workspace_id": "delhivery",
+      "title": "Delhivery Annual Report FY24",
+      "publisher": "Delhivery Limited",
+      "source_url": "https://www.delhivery.com/uploads/2024/08/Annual_Report_FY24.pdf",
+      "expected_pages": 100,
+      "sha256": null,
+      "retained_evidence_pages": [24, 85]
+    },
+    {
+      "id": "delhivery-presentation",
+      "workspace_id": "delhivery",
+      "title": "Delhivery Q4 FY24 Earnings Presentation",
+      "publisher": "Delhivery Limited",
+      "source_url": "https://www.bseindia.com/xml-data/corpfiling/AttachHis/d70668ee-4f13-485e-ba19-62bec5116a59.pdf",
+      "expected_pages": 27,
+      "sha256": null,
+      "retained_evidence_pages": [6]
+    },
+    {
+      "id": "economic-survey",
+      "workspace_id": "india-macro",
+      "title": "Economic Survey 2024–25",
+      "publisher": "Government of India",
+      "source_url": "https://www.indiabudget.gov.in/budget2025-26/economicsurvey/doc/echapter.pdf",
+      "expected_pages": 89,
+      "sha256": null,
+      "retained_evidence_pages": [4]
+    },
+    {
+      "id": "rbi-report",
+      "workspace_id": "india-macro",
+      "title": "RBI Annual Report 2024–25",
+      "publisher": "Reserve Bank of India",
+      "source_url": "https://rbidocs.rbi.org.in/rdocs/AnnualReport/PDFs/0ANNUALREPORT202425DA4AE08189C848C8846718B080F2A0A9.PDF",
+      "expected_pages": 100,
+      "sha256": null,
+      "retained_evidence_pages": [8, 17]
+    },
+    {
+      "id": "imf-report",
+      "workspace_id": "india-macro",
+      "title": "IMF India 2025 Article IV Consultation",
+      "publisher": "International Monetary Fund",
+      "source_url": "https://www.imf.org/en/publications/cr/issues/2025/11/25/india-2025-article-iv-consultation-press-release-staff-report-and-statement-by-the-572056",
+      "expected_pages": 95,
+      "sha256": null,
+      "retained_evidence_pages": [1, 3]
+    }
+  ]
+}
