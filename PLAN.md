@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: implementation in progress under the approved plan. The plan remains the governing scope; benchmark outcomes and justified simplifications are recorded here as they become available.
+Status: implementation complete through local acceptance under the approved plan. The plan remains the governing scope; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. Rights-cleared starter-corpus validation, live provider comparisons, and the final video remain external inputs.
 
 ## 1. Outcome and governing decisions
 
