@@ -25,6 +25,7 @@ def _id(prefix: str) -> str:
 def process_document(run_id: str, document_id: str, workspace_id: str, data: bytes, filename: str) -> None:
     """Process an uploaded PDF with resumable stage updates and deterministic fallback."""
     try:
+        started_at = utc_now()
         _update_run(run_id, 5, "Parsing PDF pages")
         parsed = parse_pdf(data)
         if len(parsed.pages) > settings.max_pdf_pages:
@@ -32,6 +33,9 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         _update_document(document_id, page_count=len(parsed.pages), parser=parsed.parser, quality=sum(p.quality_score for p in parsed.pages) / max(len(parsed.pages), 1), status="processing")
         _persist_pages(document_id, parsed)
         _update_run(run_id, 24, f"Parsed {len(parsed.pages)} pages")
+        if _run_cancelled(run_id):
+            _cancel_run(document_id, run_id)
+            return
         all_candidates: list[dict[str, Any]] = []
         for page in parsed.pages:
             all_candidates.extend(candidate_claims(page))
@@ -47,6 +51,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         register_workspace_claims(workspace_id)
         _update_run(run_id, 78, "Resolving relationships")
         _resolve_workspace(workspace_id, run_id)
+        _record_knowledge_changes(workspace_id, document_id, run_id, started_at)
         _update_run(run_id, 94, f"Published {inserted} grounded claims")
         _update_document(document_id, status="complete")
         _update_run(run_id, 100, "Complete", status="complete")
@@ -228,7 +233,9 @@ def _record_model_call(run_id: str, role: str, model: str, digest: str, status: 
 
 def _update_run(run_id: str, progress: int, message: str, status: str | None = None) -> None:
     with db() as conn:
-        conn.execute("UPDATE runs SET progress=?,message=?,updated_at=?" + (",status=?" if status else "") + " WHERE id=?", (progress, message, utc_now(), *( [status] if status else []), run_id))
+        updated_at = utc_now()
+        conn.execute("UPDATE runs SET progress=?,message=?,updated_at=?" + (",status=?" if status else "") + " WHERE id=?", (progress, message, updated_at, *( [status] if status else []), run_id))
+        conn.execute("INSERT INTO run_events(run_id,event_type,progress,message,details_json,created_at) VALUES(?,?,?,?,?,?)", (run_id, status or "progress", progress, message, "{}", updated_at))
 
 
 def _update_document(document_id: str, **fields: Any) -> None:
@@ -237,3 +244,21 @@ def _update_document(document_id: str, **fields: Any) -> None:
     assignments = ",".join(f"{key}=?" for key in fields)
     with db() as conn:
         conn.execute(f"UPDATE documents SET {assignments} WHERE id=?", (*fields.values(), document_id))
+
+
+def _run_cancelled(run_id: str) -> bool:
+    with db() as conn:
+        row = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+    return bool(row and row["status"] in {"cancel_requested", "cancelled"})
+
+
+def _cancel_run(document_id: str, run_id: str) -> None:
+    _update_document(document_id, status="cancelled")
+    _update_run(run_id, 100, "Cancelled before publication", status="cancelled")
+
+
+def _record_knowledge_changes(workspace_id: str, document_id: str, run_id: str, started_at: str) -> None:
+    with db() as conn:
+        claims = conn.execute("SELECT id,subject,predicate,period,raw_value FROM claims WHERE workspace_id=? AND document_id=? AND created_at>=? ORDER BY created_at", (workspace_id, document_id, started_at)).fetchall()
+        for claim in claims:
+            conn.execute("INSERT OR IGNORE INTO changes(id,workspace_id,run_id,kind,summary,details_json,created_at) VALUES(?,?,?,?,?,?,?)", (f"change-{run_id}-{claim['id']}", workspace_id, run_id, "new_fact", f"New {claim['predicate']} claim for {claim['subject']}", json.dumps({"claim_id": claim["id"], "period": claim["period"], "raw_value": claim["raw_value"], "document_id": document_id}), utc_now()))

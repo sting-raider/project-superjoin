@@ -88,7 +88,7 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
         if existing:
             return {"document": row_to_dict(existing), "run": None, "deduplicated": True}
         conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,stored_path,created_at) VALUES(?,?,?,?,?,?,?)", (document_id, workspace_id, file.filename, digest, "queued", str(stored), utc_now()))
-        conn.execute("INSERT INTO runs(id,workspace_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (run_id, workspace_id, "live", "queued", 0, "Queued", utc_now(), utc_now()))
+        conn.execute("INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (run_id, workspace_id, document_id, "live", "queued", 0, "Queued", utc_now(), utc_now()))
     background_tasks.add_task(process_document, run_id, document_id, workspace_id, data, file.filename)
     return {"document_id": document_id, "run_id": run_id, "deduplicated": False}
 
@@ -100,6 +100,41 @@ def run(run_id: str) -> dict[str, Any]:
     if not item:
         raise HTTPException(404, "Run not found")
     return item
+
+
+@app.get("/api/v1/runs/{run_id}/events/history")
+def run_event_history(run_id: str, after_id: int = 0) -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM run_events WHERE run_id=? AND id>? ORDER BY id LIMIT 500", (run_id, after_id)).fetchall()
+    return {"items": rows_to_dicts(rows)}
+
+
+@app.post("/api/v1/runs/{run_id}/cancel")
+def cancel_run(run_id: str) -> dict[str, Any]:
+    with db() as conn:
+        item = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if not item:
+            raise HTTPException(404, "Run not found")
+        if item["status"] not in {"queued", "processing", "cancel_requested"}:
+            return {"run_id": run_id, "status": item["status"]}
+        conn.execute("UPDATE runs SET status='cancel_requested',message='Cancellation requested',updated_at=? WHERE id=?", (utc_now(), run_id))
+    return {"run_id": run_id, "status": "cancel_requested"}
+
+
+@app.post("/api/v1/runs/{run_id}/retry", status_code=202)
+def retry_run(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    with db() as conn:
+        row = conn.execute("SELECT r.workspace_id,r.document_id,d.name,d.stored_path FROM runs r JOIN documents d ON d.id=r.document_id WHERE r.id=?", (run_id,)).fetchone()
+        if not row or not row["stored_path"]:
+            raise HTTPException(404, "Stored document for retry not found")
+        document = conn.execute("SELECT * FROM documents WHERE id=?", (row["document_id"],)).fetchone()
+        if not document:
+            raise HTTPException(404, "Document not found")
+        new_run_id = f"run-{uuid.uuid4().hex[:12]}"
+        conn.execute("INSERT INTO runs(id,workspace_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (new_run_id, document["workspace_id"], "retry", "queued", 0, "Retry queued", utc_now(), utc_now()))
+        data = Path(document["stored_path"]).read_bytes()
+    background_tasks.add_task(process_document, new_run_id, document["id"], document["workspace_id"], data, document["name"])
+    return {"run_id": new_run_id, "document_id": document["id"]}
 
 
 @app.get("/api/v1/runs/{run_id}/events")

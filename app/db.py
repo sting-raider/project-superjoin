@@ -388,7 +388,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "reserved_usd": "REAL NOT NULL DEFAULT 0",
             "cache_hit": "INTEGER NOT NULL DEFAULT 0",
         },
-        "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'"},
+        "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'", "document_id": "TEXT"},
         "reviews": {
             "status": "TEXT NOT NULL DEFAULT 'active'",
             "revoked_at": "TEXT",
