@@ -127,6 +127,13 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   release their reservation as failed. The Settings API exposes only the
   nonsecret role contract, and the model benchmark checks the relevant role
   endpoint rather than assuming one shared provider.
+- Trust Gate temporal semantics now overlay `fact_versions` by their immutable
+  workspace knowledge revision, so `known_at_revision` returns the historical
+  value and version identifier rather than filtering the current fact's local
+  revision. Claims with only visual-region evidence return
+  `needs_review` until a reviewer confirms them. Deterministic entity and
+  predicate registration also updates the latest interpretation statuses to
+  `resolved`; these behaviors have direct SQLite regression coverage.
 
 ### Resolved implementation simplifications
 

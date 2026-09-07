@@ -90,6 +90,7 @@ def test_read_models_and_exports_are_available() -> None:
         claim = client.get("/api/v1/claims/clm-delhivery-revenue-annual")
         assert claim.status_code == 200
         assert claim.json()["anchors"]
+        assert claim.json()["interpretations"][0]["entity_status"] == "resolved"
         history = client.get("/api/v1/facts/fact-delhivery-revenue-fy24/history")
         assert history.status_code == 200
         assert history.json()["items"]

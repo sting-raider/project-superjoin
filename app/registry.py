@@ -41,11 +41,13 @@ def observe_claim_schema(workspace_id: str, subject: str, predicate: str, value_
 
 def register_workspace_claims(workspace_id: str) -> int:
     with db() as conn:
-        rows = conn.execute("SELECT subject,predicate,value_type,evidence_json FROM claims WHERE workspace_id=? AND extraction_status='accepted'", (workspace_id,)).fetchall()
+        rows = conn.execute("SELECT id,subject,predicate,value_type,evidence_json FROM claims WHERE workspace_id=? AND extraction_status='accepted'", (workspace_id,)).fetchall()
     for row in rows:
         import json
 
         observe_claim_schema(workspace_id, row["subject"], row["predicate"], row["value_type"], json.loads(row["evidence_json"]))
+        with db() as conn:
+            conn.execute("UPDATE claim_interpretations SET entity_status='resolved',predicate_status='resolved' WHERE claim_id=? AND version=(SELECT MAX(version) FROM claim_interpretations WHERE claim_id=?)", (row["id"], row["id"]))
     return len(rows)
 
 

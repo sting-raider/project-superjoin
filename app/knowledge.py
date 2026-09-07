@@ -50,6 +50,8 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
 def rebuild_workspace(workspace_id: str, run_id: str | None = None) -> None:
     with db() as conn:
         claims = conn.execute("SELECT * FROM claims WHERE workspace_id=? AND extraction_status='accepted' ORDER BY created_at", (workspace_id,)).fetchall()
+        current_workspace = conn.execute("SELECT active_revision FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+        publication_revision = int(current_workspace["active_revision"] if current_workspace else 0) + 1
         for claim in claims:
             fact_id = f"fact-claim-{claim['id']}"
             status = "SUPPORTED"
@@ -71,10 +73,10 @@ def rebuild_workspace(workspace_id: str, run_id: str | None = None) -> None:
             )
             revision = conn.execute("SELECT revision FROM facts WHERE id=?", (fact_id,)).fetchone()["revision"]
             version_id = f"{fact_id}-v{revision}"
-            conn.execute("INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (version_id, fact_id, revision, claim["normalized_value"], claim["raw_value"], status, reason, revision, claim["evidence_json"], updated_at))
+            conn.execute("INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (version_id, fact_id, revision, claim["normalized_value"], claim["raw_value"], status, reason, publication_revision, claim["evidence_json"], updated_at))
             conn.execute("INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)", (version_id, claim["id"], "supporting", updated_at))
             conn.execute("UPDATE reviews SET stale=1,status='stale' WHERE fact_id=? AND based_on_revision<? AND status='active'", (fact_id, revision))
-        conn.execute("UPDATE workspaces SET active_revision=active_revision+1 WHERE id=?", (workspace_id,))
+        conn.execute("UPDATE workspaces SET active_revision=? WHERE id=?", (publication_revision, workspace_id))
 
 
 def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | None = None, policy: str = "strict", known_at_revision: int | None = None) -> dict[str, Any]:
@@ -82,15 +84,16 @@ def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | 
         rows = conn.execute("SELECT * FROM facts WHERE workspace_id=? AND lower(subject)=lower(?) AND lower(predicate)=lower(?) AND (? IS NULL OR period=?) ORDER BY updated_at DESC", (workspace_id, subject, predicate, period, period)).fetchall()
         if not rows:
             return {"decision": "not_found", "safe_to_use": False, "reason_codes": ["NO_MATCH"], "alternatives": []}
-        if known_at_revision is not None:
-            rows = [row for row in rows if int(row["revision"]) <= known_at_revision]
-            if not rows:
-                return {"decision": "not_found", "safe_to_use": False, "reason_codes": ["NO_MATCH_AT_REVISION"], "alternatives": []}
+        rows = _versioned_rows(conn, rows, known_at_revision)
+        if not rows:
+            return {"decision": "not_found", "safe_to_use": False, "reason_codes": ["NO_MATCH_AT_REVISION"], "alternatives": []}
         if period is None and len({row["period"] for row in rows}) > 1:
             return {"decision": "needs_context", "safe_to_use": False, "reason_codes": ["PERIOD_REQUIRED"], "alternatives": [_fact_payload(row) for row in rows], "coverage": {"candidate_count": len(rows)}}
         statuses = {row["status"] for row in rows}
         differing_values = len({row["normalized_value"] for row in rows}) > 1
         contexts = {(row["period"], row["modality"], row["scope"], row["value_type"], row["unit"]) for row in rows}
+        if all(_visual_only_evidence(row["evidence_json"]) for row in rows):
+            return {"decision": "needs_review", "safe_to_use": False, "reason_codes": ["VISUAL_EVIDENCE_REQUIRES_REVIEW"], "alternatives": [_fact_payload(row) for row in rows], "coverage": {"candidate_count": len(rows)}}
         if len(rows) > 1 and len(contexts) == 1 and statuses.issubset({"SUPPORTED", "CORROBORATED"}) and (not differing_values or statuses == {"CORROBORATED"}):
             evidence = _aggregate_evidence(rows)
             reason_codes = ["GROUNDED", "CORROBORATED"] if statuses == {"CORROBORATED"} else ["GROUNDED"]
@@ -119,7 +122,10 @@ def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | 
 
 def _allow_payload(row: Any, reason_codes: list[str], review_id: str | None = None, evidence: Any | None = None) -> dict[str, Any]:
     evidence = evidence if evidence is not None else json.loads(row["evidence_json"])
-    payload = {"decision": "allow", "safe_to_use": True, "fact_version_id": row["id"], "knowledge_revision": row["revision"], "value": row["normalized_value"], "display_value": row["display_value"], "unit": row["unit"], "reason_codes": reason_codes, "evidence": evidence, "coverage": {"evidence_count": len(evidence) if isinstance(evidence, list) else 1}, "policy_version": "strict-v1"}
+    fact_version_id = row.get("_fact_version_id") if isinstance(row, dict) else None
+    fact_version_id = fact_version_id or row["id"]
+    knowledge_revision = row.get("_knowledge_revision") if isinstance(row, dict) else None
+    payload = {"decision": "allow", "safe_to_use": True, "fact_version_id": fact_version_id, "knowledge_revision": knowledge_revision or row["revision"], "value": row["normalized_value"], "display_value": row["display_value"], "unit": row["unit"], "reason_codes": reason_codes, "evidence": evidence, "coverage": {"evidence_count": len(evidence) if isinstance(evidence, list) else 1}, "policy_version": "strict-v1"}
     if review_id:
         payload["review_id"] = review_id
     return payload
@@ -142,7 +148,39 @@ def _aggregate_evidence(rows: list[Any]) -> list[dict[str, Any]]:
 
 
 def _fact_payload(row: Any) -> dict[str, Any]:
-    return {"id": row["id"], "subject": row["subject"], "predicate": row["predicate"], "value": row["normalized_value"], "display_value": row["display_value"], "period": row["period"], "modality": row["modality"], "status": row["status"], "evidence": json.loads(row["evidence_json"])}
+    return {"id": row.get("_fact_version_id", row["id"]) if isinstance(row, dict) else row["id"], "fact_id": row["id"], "subject": row["subject"], "predicate": row["predicate"], "value": row["normalized_value"], "display_value": row["display_value"], "period": row["period"], "modality": row["modality"], "status": row["status"], "evidence": json.loads(row["evidence_json"])}
+
+
+def _versioned_rows(conn: Any, rows: list[Any], known_at_revision: int | None) -> list[Any]:
+    """Overlay each current fact with its latest version known at a revision."""
+
+    versioned: list[Any] = []
+    for row in rows:
+        if known_at_revision is None:
+            version = conn.execute("SELECT id,knowledge_revision FROM fact_versions WHERE fact_id=? ORDER BY revision DESC LIMIT 1", (row["id"],)).fetchone()
+        else:
+            version = conn.execute("SELECT * FROM fact_versions WHERE fact_id=? AND knowledge_revision<=? ORDER BY knowledge_revision DESC,revision DESC LIMIT 1", (row["id"], known_at_revision)).fetchone()
+        if known_at_revision is not None and version is None:
+            continue
+        item = dict(row)
+        if version:
+            if known_at_revision is not None:
+                for key in ("normalized_value", "display_value", "status", "reason", "evidence_json"):
+                    item[key] = version[key]
+                item["revision"] = version["revision"]
+            item["_fact_version_id"] = version["id"]
+            item["_knowledge_revision"] = version["knowledge_revision"]
+        versioned.append(item)
+    return versioned
+
+
+def _visual_only_evidence(value: str | None) -> bool:
+    try:
+        parsed = json.loads(value or "[]")
+    except json.JSONDecodeError:
+        return True
+    items = parsed if isinstance(parsed, list) else [parsed]
+    return bool(items) and all(isinstance(item, dict) and (item.get("kind") == "visual-region" or item.get("precision") == "visual-region" or item.get("requires_review")) for item in items)
 
 
 def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]:

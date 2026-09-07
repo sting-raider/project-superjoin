@@ -70,3 +70,52 @@ def test_live_sqlite_relationship_uses_precision_and_aggregates_evidence(tmp_pat
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_visual_only_evidence_requires_review(tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "visual.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        init_db()
+        now = utc_now()
+        evidence = json.dumps([{"kind": "visual-region", "precision": "visual-region", "text": "A chart value"}])
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute("INSERT INTO facts(id,workspace_id,subject,predicate,normalized_value,display_value,value_type,unit,period,modality,scope,status,reason,evidence_json,revision,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("f", "w", "India", "real_gdp_growth", "0.065", "6.5%", "percentage", "%", "FY26", "forecast", "India", "SUPPORTED", "Visual extraction needs review.", evidence, 1, now))
+            conn.execute("INSERT INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", ("f-v1", "f", 1, "0.065", "6.5%", "SUPPORTED", "Visual extraction needs review.", 1, evidence, now))
+        result = resolve_fact("w", "India", "real_gdp_growth", "FY26")
+        assert result["decision"] == "needs_review"
+        assert result["safe_to_use"] is False
+        assert "VISUAL_EVIDENCE_REQUIRES_REVIEW" in result["reason_codes"]
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_known_at_revision_returns_historical_fact_version(tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "history.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        init_db()
+        now = utc_now()
+        old_evidence = json.dumps([{"text": "First report: 6.4%", "precision": "page-only"}])
+        new_evidence = json.dumps([{"text": "Restated report: 6.5%", "precision": "page-only"}])
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,active_revision,created_at) VALUES(?,?,?,?)", ("w", "Workspace", 2, now))
+            conn.execute("INSERT INTO facts(id,workspace_id,subject,predicate,normalized_value,display_value,value_type,unit,period,modality,scope,status,reason,evidence_json,revision,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", ("f", "w", "India", "real_gdp_growth", "0.065", "6.5%", "percentage", "%", "FY25", "estimate", "India", "SUPPORTED", "Latest", new_evidence, 2, now))
+            conn.execute("INSERT INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", ("f-v1", "f", 1, "0.064", "6.4%", "SUPPORTED", "First", 1, old_evidence, now))
+            conn.execute("INSERT INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", ("f-v2", "f", 2, "0.065", "6.5%", "SUPPORTED", "Latest", 2, new_evidence, now))
+        historical = resolve_fact("w", "India", "real_gdp_growth", "FY25", known_at_revision=1)
+        current = resolve_fact("w", "India", "real_gdp_growth", "FY25")
+        assert historical["decision"] == "allow"
+        assert historical["fact_version_id"] == "f-v1"
+        assert historical["value"] == "0.064"
+        assert current["fact_version_id"] == "f-v2"
+        assert current["value"] == "0.065"
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)

@@ -6,7 +6,7 @@ Project SuperJoin is a local, evidence-first temporal fact layer. Its central de
 2. **Claim interpretations** are append-only, deterministic projections of a claim. They add normalized decimals, units, periods, entity/predicate mappings, security flags, and grounding status without rewriting the source claim.
 3. **Canonical fact versions** group compatible interpretations into a queryable fact family. A version records the evidence membership, alternatives, relationship conclusions, review dependence, and knowledge revision that justify its current state.
 
-This separation lets the product answer two different questions honestly: “What did the source assert?” and “What may a downstream system safely use for this context and policy?” The Trust Gate answers the second question and returns `block`, `needs_context`, `needs_review`, or `allow` with evidence and reason codes.
+This separation lets the product answer two different questions honestly: “What did the source assert?” and “What may a downstream system safely use for this context and policy?” The Trust Gate answers the second question and returns `block`, `needs_context`, `needs_review`, or `allow` with evidence and reason codes. Historical queries select the latest immutable `fact_versions` row whose workspace knowledge revision is at or before `known_at_revision`; they do not reinterpret today’s fact as historical truth.
 
 ## Runtime flow
 
