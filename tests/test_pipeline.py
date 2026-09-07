@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app import pipeline
 from app.config import settings
 from app.db import db, init_db, utc_now
 from app.parser import ParsedDocument, ParsedPage
@@ -241,6 +242,64 @@ def test_cancellation_during_extraction_stops_before_publication(monkeypatch, tm
         assert run["status"] == "cancelled"
         assert document["status"] == "cancelled"
         assert claims["n"] == 0
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_failed_publication_resumes_from_completed_extraction_checkpoint(monkeypatch, tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "resume.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    parsed = ParsedDocument(
+        pages=[ParsedPage(0, 1000, 1000, "Nimbus Cloud ARR reached $42 million in FY26.", [], 0.95, [])],
+        sha256="hash",
+        parser="test-parser",
+        parser_version="1",
+    )
+    extracted = [{
+        "subject": "Nimbus Cloud",
+        "predicate": "annual_recurring_revenue",
+        "raw_value": "$42 million",
+        "value_type": "money",
+        "unit": "USD",
+        "period": "FY26",
+        "modality": "actual",
+        "scope": "company",
+        "evidence": {"pdf_page": 1, "text": "Nimbus Cloud ARR reached $42 million in FY26."},
+    }]
+    calls: list[str] = []
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "source.pdf", "hash", "queued", now))
+            for run_id in ("r1", "r2"):
+                conn.execute("INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (run_id, "w", "d", "live", "queued", 0, "Queued", now, now))
+        monkeypatch.setattr("app.pipeline.parse_pdf", lambda _data: parsed)
+        monkeypatch.setattr("app.pipeline.available", lambda role=None: role == "extraction")
+
+        def fake_extract(*args, **kwargs):
+            calls.append("provider")
+            return extracted
+
+        monkeypatch.setattr("app.pipeline._model_extract", fake_extract)
+        original_insert = pipeline._insert_claims
+        monkeypatch.setattr("app.pipeline._insert_claims", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("simulated publication crash")))
+        process_document("r1", "d", "w", b"%PDF-resume", "source.pdf")
+        with db() as conn:
+            assert conn.execute("SELECT status FROM runs WHERE id='r1'").fetchone()["status"] == "failed"
+            assert conn.execute("SELECT COUNT(*) AS n FROM claims").fetchone()["n"] == 0
+            assert conn.execute("SELECT COUNT(*) AS n FROM extraction_batches WHERE status='complete'").fetchone()["n"] == 1
+
+        monkeypatch.setattr("app.pipeline._insert_claims", original_insert)
+        process_document("r2", "d", "w", b"%PDF-resume", "source.pdf")
+        with db() as conn:
+            assert conn.execute("SELECT status FROM runs WHERE id='r2'").fetchone()["status"] == "complete"
+            assert conn.execute("SELECT COUNT(*) AS n FROM claims").fetchone()["n"] == 1
+        assert calls == ["provider"]
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
