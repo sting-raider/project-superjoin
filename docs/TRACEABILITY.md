@@ -23,6 +23,7 @@ The table maps the approved plan to the implemented review surface. File names a
 | Superjoin-inspired UI | `web/src/styles.css`, `web/src/main.jsx` | Forest/green palette, facts table, evidence/trust side panel |
 | Evaluation and observability | `evals/`, `docs/EVALUATION.md`, run events, health/budget endpoints | CI and reproducible scripts |
 | Easy setup and demo mode | `Dockerfile`, `compose.yaml`, seeded replay records, README | `docker compose up --build`, localhost:8080 |
+| Interactive recorded replay | `app/seed.py`, `/api/v1/demo/replay/*`, `demo_replay_state`, sidebar controls | Start two-document checkpoint, continue third-document ingestion, reset scoped sandbox |
 
 ## Explicitly bounded claims
 

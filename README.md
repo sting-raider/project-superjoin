@@ -23,6 +23,15 @@ POST `/api/v1/resolve` Trust Gate contract, archive/reactivate document
 mutations, and read/export routes for documents, claims, fact history, JSON,
 CSV, and XLSX.
 
+The sidebar's **Start recorded replay** action opens a real two-document demo
+checkpoint. **Continue recorded replay** adds the recorded third document and
+runs registry resolution, relationship assessment, and canonical publication
+again. The UI labels this as “Recorded model outputs; no API calls.” Reset
+clears only the demo workspaces, keeps any live workspace intact, and restores
+the full recorded snapshot. Original provider timing/cost is shown as
+unavailable when it was not part of the permitted recording; replay timing is
+measured locally.
+
 To process a never-seen PDF, provide an OpenAI-compatible endpoint in a local
 `.env` (see `.env.example`) and restart Compose. Extraction, reasoning, vision,
 and embedding roles are configured independently, including endpoint, model,
@@ -81,7 +90,9 @@ The repository currently ships a compact recorded demo rather than third-party
 source PDFs. A full six-document, 511-page source-verified parser benchmark,
 live extraction/embedding model comparison, and final video require the local
 starter archive and optional provider credentials. The parser harness records
-these as explicit inputs; it does not claim unrun comparisons passed.
+these as explicit inputs; it does not claim unrun comparisons passed. The
+recorded replay exercises the production registry, relationship, and fact
+publication stages without pretending to be a live model run.
 
 Low-resolution scans, handwriting, complex charts, and ambiguous cross-page
 tables can remain quarantined. Filtered vector search is an exact bounded scan
