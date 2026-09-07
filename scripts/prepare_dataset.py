@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,32 @@ def _files(input_path: Path, scratch: Path) -> list[Path]:
     raise SystemExit(f"Unsupported input: {input_path}")
 
 
+def _tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.casefold())
+        if len(token) > 2 and not token.isdigit()
+    }
+
+
+def _match_candidate(title: str, candidates: list[Path]) -> Path | None:
+    """Choose one filename by normalized token coverage, without source-specific rules."""
+
+    title_tokens = _tokens(title)
+    scored = []
+    for path in candidates:
+        filename_tokens = _tokens(path.stem)
+        overlap = title_tokens & filename_tokens
+        coverage = len(overlap) / max(1, len(title_tokens))
+        scored.append((coverage, len(overlap), str(path).casefold(), path))
+    scored.sort(reverse=True)
+    if not scored or scored[0][0] < 0.3:
+        return None
+    if len(scored) > 1 and scored[0][:2] == scored[1][:2]:
+        return None
+    return scored[0][3]
+
+
 def prepare(input_path: Path, output_dir: Path) -> dict[str, Any]:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     candidates = _files(input_path, output_dir / ".extracted")
@@ -63,12 +90,10 @@ def prepare(input_path: Path, output_dir: Path) -> dict[str, Any]:
     if not candidates:
         raise SystemExit("No PDF files found in the supplied input")
     for item in manifest["documents"]:
-        title_tokens = {token.lower() for token in item["title"].replace("–", " ").split() if len(token) > 3}
-        matches = [path for path in candidates if title_tokens & {token.lower() for token in path.stem.replace("_", " ").split()}]
-        if len(matches) != 1:
-            output["documents"].append({"id": item["id"], "status": "unmatched", "matches": [str(path) for path in matches]})
+        path = _match_candidate(item["title"], candidates)
+        if path is None:
+            output["documents"].append({"id": item["id"], "status": "unmatched", "matches": []})
             continue
-        path = matches[0]
         output["documents"].append({"id": item["id"], "status": "prepared", "path": str(path.resolve()), "sha256": _sha256(path), "page_count": _page_count(path), "expected_pages": item["expected_pages"]})
     output["verified"] = len(output["documents"]) == len(manifest["documents"]) and all(
         entry["status"] == "prepared" and entry["page_count"] in (None, entry["expected_pages"])
