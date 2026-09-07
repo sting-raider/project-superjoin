@@ -3,20 +3,19 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import mimetypes
 import uuid
 from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .budget import snapshot as budget_snapshot
 from .config import settings
 from .db import db, init_db, row_to_dict, rows_to_dicts, utc_now
 from .demo_data import DEMO_CASES
 from .knowledge import resolve_fact
-from .budget import snapshot as budget_snapshot
 from .pipeline import process_document
 from .retrieval import search_claims
 from .seed import seed_demo
@@ -67,7 +66,7 @@ def documents(workspace_id: str = "delhivery") -> dict[str, Any]:
 
 
 @app.post("/api/v1/documents", status_code=202)
-async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), workspace_id: str = Form("delhivery")) -> dict[str, Any]:
+async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), workspace_id: str = Form("delhivery")) -> dict[str, Any]:  # noqa: B008
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Upload a PDF file")
     data = await file.read()

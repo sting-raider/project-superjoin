@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import uuid
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .db import db, utc_now

@@ -15,7 +15,6 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "datasets" / "starter" / "manifest.json"
 
@@ -33,7 +32,7 @@ def _page_count(path: Path) -> int | None:
         from pypdf import PdfReader
 
         return len(PdfReader(str(path), strict=False).pages)
-    except Exception:
+    except Exception:  # noqa: BLE001 - optional parser must not block manifest creation
         return None
 
 

@@ -4,7 +4,6 @@ import hashlib
 import io
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import pdfplumber
@@ -86,7 +85,7 @@ def evidence_for(page: ParsedPage, start: int, end: int, excerpt: str) -> dict[s
 
 
 def _printed_page(text: str) -> str | None:
-    matches = re.findall(r"(?:page\s+|\s)(\d{1,4})\s*$", text, flags=re.I)
+    matches = re.findall(r"(?:page\s+|\s)(\d{1,4})\s*$", text, flags=re.IGNORECASE)
     return matches[-1] if matches else None
 
 
@@ -100,7 +99,7 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
         (r"(?P<label>EBITDA(?: margin)?|Adjusted EBITDA)\D{0,100}(?P<value>(?:₹|Rs\.?|INR)?\s*\(?[\d,]+(?:\.\d+)?\)?\s*(?:crore|cr|million|mn|billion|bn|%|per cent|percent)?)", "financial_metric"),
     ]
     for pattern, category in patterns:
-        for match in re.finditer(pattern, text, flags=re.I):
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
             raw_value = match.group("value").strip()
             parsed = parse_numeric(raw_value)
             context_start = max(0, match.start() - 180)

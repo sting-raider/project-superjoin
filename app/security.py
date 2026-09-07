@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 INSTRUCTION_PATTERNS = (
     r"ignore\s+(?:all\s+)?previous\s+instructions",
     r"disregard\s+(?:the\s+)?system\s+message",
@@ -12,7 +11,7 @@ INSTRUCTION_PATTERNS = (
     r"(?:exfiltrate|leak|print|reveal)\s+(?:the\s+)?(?:key|secret|prompt|credential)",
     r"(?:assistant|developer|system)\s*:\s*",
 )
-COMPILED_PATTERNS = tuple(re.compile(pattern, re.I) for pattern in INSTRUCTION_PATTERNS)
+COMPILED_PATTERNS = tuple(re.compile(pattern, re.IGNORECASE) for pattern in INSTRUCTION_PATTERNS)
 
 
 def security_flags(text: str) -> list[str]:
@@ -20,7 +19,7 @@ def security_flags(text: str) -> list[str]:
     for pattern in COMPILED_PATTERNS:
         if pattern.search(text):
             flags.append("document-instruction")
-    if re.search(r"https?://\S+", text, re.I) and re.search(r"(?:visit|open|fetch|send)\b", text, re.I):
+    if re.search(r"https?://\S+", text, re.IGNORECASE) and re.search(r"(?:visit|open|fetch|send)\b", text, re.IGNORECASE):
         flags.append("document-exfiltration-url")
     return sorted(set(flags))
 

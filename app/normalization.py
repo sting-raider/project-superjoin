@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 import re
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 from typing import Any
-
 
 MONEY_SYMBOLS = {"₹": "INR", "rs": "INR", "rs.": "INR", "inr": "INR", "$": "USD", "usd": "USD"}
 SCALE_FACTORS = {
-    "thousand": Decimal("1000"),
-    "k": Decimal("1000"),
-    "lakh": Decimal("100000"),
-    "lac": Decimal("100000"),
-    "crore": Decimal("10000000"),
-    "cr": Decimal("10000000"),
-    "million": Decimal("1000000"),
-    "mn": Decimal("1000000"),
-    "billion": Decimal("1000000000"),
-    "bn": Decimal("1000000000"),
+    "thousand": Decimal(1000),
+    "k": Decimal(1000),
+    "lakh": Decimal(100000),
+    "lac": Decimal(100000),
+    "crore": Decimal(10000000),
+    "cr": Decimal(10000000),
+    "million": Decimal(1000000),
+    "mn": Decimal(1000000),
+    "billion": Decimal(1000000000),
+    "bn": Decimal(1000000000),
 }
 MISSING_VALUES = {"", "-", "—", "–", "n/a", "na", "nil", "none", "not available", "not meaningful", "nm"}
 
@@ -44,9 +43,9 @@ def parse_numeric(raw: str) -> dict[str, Any]:
     original = raw.strip()
     if original.lower() in MISSING_VALUES:
         return {"raw": original, "normalized": None, "value_type": "missing", "unit": None, "trace": ["missing-token"]}
-    is_percentage = bool(re.search(r"%|per cent|percent", original, flags=re.I))
-    is_percentage_points = bool(re.search(r"percentage\s*points?|pp\b", original, flags=re.I))
-    is_basis_points = bool(re.search(r"basis\s*points?|\bbps?\b", original, flags=re.I))
+    is_percentage = bool(re.search(r"%|per cent|percent", original, flags=re.IGNORECASE))
+    is_percentage_points = bool(re.search(r"percentage\s*points?|pp\b", original, flags=re.IGNORECASE))
+    is_basis_points = bool(re.search(r"basis\s*points?|\bbps?\b", original, flags=re.IGNORECASE))
     numbers = re.findall(r"(?:\(|[-−+])?\s*\d[\d,]*(?:\.\d+)?\s*\)?", original)
     values = [v for v in (_decimal(n) for n in numbers) if v is not None]
     if not values:
@@ -65,11 +64,11 @@ def parse_numeric(raw: str) -> dict[str, Any]:
             currency = code
             break
     if is_basis_points:
-        normalized = value / Decimal("10000")
+        normalized = value / Decimal(10000)
         value_type = "rate"
         display_unit = "bps"
     elif is_percentage and not is_percentage_points:
-        normalized = value / Decimal("100")
+        normalized = value / Decimal(100)
         value_type = "percentage"
         display_unit = "%"
     elif is_percentage_points:
@@ -80,12 +79,12 @@ def parse_numeric(raw: str) -> dict[str, Any]:
         normalized = value
         value_type = "number"
         display_unit = currency or unit
-    if len(values) > 1 and re.search(r"-|to|–", original, flags=re.I):
+    if len(values) > 1 and re.search(r"-|to|–", original, flags=re.IGNORECASE):
         end = values[1]
         if is_basis_points:
-            end /= Decimal("10000")
+            end /= Decimal(10000)
         elif is_percentage and not is_percentage_points:
-            end /= Decimal("100")
+            end /= Decimal(100)
         elif unit:
             end *= SCALE_FACTORS[unit]
         normalized_value: str | list[str] = [decimal_string(normalized) or "", decimal_string(end) or ""]
@@ -130,7 +129,7 @@ def parse_period(text: str) -> str | None:
         if match:
             value = match.group(0)
             return value.replace("Q", "Q")
-    match = re.search(r"(?:YEAR|ENDED|ASAT).*?(20\d{2})", text, flags=re.I)
+    match = re.search(r"(?:YEAR|ENDED|ASAT).*?(20\d{2})", text, flags=re.IGNORECASE)
     return f"FY{match.group(1)}" if match else None
 
 
@@ -178,6 +177,6 @@ def compare_numeric(a: str | None, b: str | None, precision_a: int | None = None
     # large-unit rounding compatible without making small percentages fuzzy.
     precisions = [p for p in (precision_a, precision_b) if p and p > 0]
     significant_places = max(precisions, default=0)
-    scale = max(abs(left), abs(right), Decimal("1"))
+    scale = max(abs(left), abs(right), Decimal(1))
     tolerance = scale * (Decimal(10) ** -significant_places) / 2
     return "rounding-compatible" if abs(left - right) <= tolerance else "different"

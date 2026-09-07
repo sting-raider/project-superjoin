@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 
 from .db import db, utc_now
 from .demo_data import DEMO_CASES, DEMO_CLAIMS, DEMO_DOCUMENTS, DEMO_RELATIONSHIPS, DEMO_WORKSPACES

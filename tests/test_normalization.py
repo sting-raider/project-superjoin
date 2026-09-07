@@ -17,7 +17,7 @@ def test_percentage_is_stored_as_fraction() -> None:
 
 def test_parenthetical_negative() -> None:
     parsed = parse_numeric("(404)")
-    assert Decimal(parsed["normalized"]) == Decimal("-404")
+    assert Decimal(parsed["normalized"]) == Decimal(-404)
 
 
 def test_fiscal_periods_are_stable() -> None:

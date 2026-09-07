@@ -1,21 +1,19 @@
 from __future__ import annotations
 
-import json
-import io
 import hashlib
+import io
+import json
 import uuid
-from pathlib import Path
 from typing import Any
 
-from .config import settings
 from .budget import BudgetExceeded, estimate_cost, reserve, settle
+from .config import settings
 from .db import db, utc_now
-from .normalization import compare_numeric
 from .parser import candidate_claims, parse_pdf
 from .provenance import persist_anchor, persist_interpretation, persist_page_artifacts
+from .providers import ProviderError, available, input_hash, structured_chat, vision_chat
 from .registry import register_workspace_claims
 from .security import validate_model_claim
-from .providers import ProviderError, available, input_hash, structured_chat, vision_chat
 
 
 def _id(prefix: str) -> str:
@@ -55,7 +53,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         _update_run(run_id, 94, f"Published {inserted} grounded claims")
         _update_document(document_id, status="complete")
         _update_run(run_id, 100, "Complete", status="complete")
-    except Exception as exc:  # persisted for the UI; the run is never silently lost
+    except Exception as exc:  # noqa: BLE001 - persist every failed run for inspection
         _update_document(document_id, status="failed")
         _update_run(run_id, 100, f"Failed: {exc}", status="failed")
 
@@ -170,7 +168,7 @@ def _render_page(pdf_bytes: bytes, page_index: int) -> bytes | None:
         output = io.BytesIO()
         image.save(output, format="PNG", optimize=True)
         return output.getvalue()
-    except Exception:
+    except Exception:  # noqa: BLE001 - renderer backends fail with heterogeneous errors
         return None
     finally:
         if bitmap is not None:
