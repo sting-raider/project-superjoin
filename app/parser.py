@@ -110,6 +110,8 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
             offset += len(line)
             continue
         for match in value_pattern.finditer(line):
+            if _overlaps_date(line, match.start(), match.end()):
+                continue
             raw_value = match.group("value").strip()
             if not _useful_numeric_hint(raw_value, compact_line):
                 continue
@@ -142,11 +144,50 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
 
 
 def _open_vocabulary_label(prefix: str) -> str | None:
+    # Prefer the final metric phrase in a sentence or table row. This is an
+    # intentionally shallow hint normalizer: the semantic extractor remains
+    # responsible for discovering and naming claims.
+    prefix = re.split(r"[,;|]", prefix)[-1]
     words = re.findall(r"[A-Za-z][A-Za-z0-9&'/-]*", prefix)
     if not words:
         return None
+    cue_words = {
+        "and",
+        "are",
+        "ended",
+        "has",
+        "have",
+        "is",
+        "reported",
+        "shows",
+        "stood",
+        "was",
+        "were",
+        "with",
+    }
+    for index in range(len(words) - 1, -1, -1):
+        if words[index].casefold() in cue_words and index < len(words) - 1:
+            words = words[index + 1 :]
+            break
+    while words and words[-1].casefold() in {"at", "by", "effective", "for", "in", "of", "on", "to"}:
+        words.pop()
+    words = [word for word in words if not re.fullmatch(r"(?:fy)?\d{2,4}", word, flags=re.IGNORECASE)]
+    if not words or not any(len(word) >= 3 for word in words):
+        return None
     label = "_".join(words[-8:]).casefold().replace("-", "_").replace("/", "_")
     return re.sub(r"_+", "_", label).strip("_") or None
+
+
+def _overlaps_date(line: str, start: int, end: int) -> bool:
+    date_patterns = (
+        r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b",
+        r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b",
+    )
+    return any(
+        match.start() < end and start < match.end()
+        for pattern in date_patterns
+        for match in re.finditer(pattern, line, flags=re.IGNORECASE)
+    )
 
 
 def _useful_numeric_hint(raw_value: str, line: str) -> bool:
