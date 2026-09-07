@@ -147,6 +147,10 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   reports an embedding error instead of hiding a failed dense lane. A local
   regression verifies one provider call followed by a cached lexical+dense
   fusion result.
+- Budget settlement now releases each reservation exactly once and caps
+  accounted spend at the configured cumulative limit. A provider estimate that
+  would exceed the remaining cap is recorded as `budget_capped` while the
+  ledger remains within US$20; a regression covers cumulative-spend headroom.
 
 ### Resolved implementation simplifications
 

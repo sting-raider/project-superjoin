@@ -4,7 +4,7 @@ from pathlib import Path
 
 from app.budget import reserve, settle, snapshot
 from app.config import settings
-from app.db import init_db
+from app.db import db, init_db
 
 
 def test_settlement_is_idempotent(tmp_path: Path) -> None:
@@ -22,6 +22,29 @@ def test_settlement_is_idempotent(tmp_path: Path) -> None:
         assert first == second
         assert second["reserved_usd"] == 0
         assert second["spent_usd"] == 0.10
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_settlement_cannot_exceed_configured_cap(tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "cap.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        init_db()
+        spent = reserve(None, "extraction", "test-model", "spent-hash", 19.9)
+        settle(spent, 19.9)
+        reservation = reserve(None, "extraction", "test-model", "cap-hash", 0.1)
+        settle(reservation, 2.0)
+        result = snapshot()
+        assert result["reserved_usd"] == 0
+        assert result["spent_usd"] == result["limit_usd"]
+        with db() as conn:
+            row = conn.execute("SELECT status,estimated_cost FROM model_calls WHERE id=?", (reservation.id,)).fetchone()
+        assert row["status"] == "budget_capped"
+        assert abs(row["estimated_cost"] - 0.1) < 1e-9
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)

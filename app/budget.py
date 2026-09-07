@@ -50,8 +50,14 @@ def settle(reservation: Reservation, actual_cost: float, *, status: str = "compl
         if row is None or row["status"] != "reserved":
             return
         reserved = float(row["reserved_usd"])
-        conn.execute("UPDATE budget_ledger SET reserved_usd=MAX(0,reserved_usd-?),spent_usd=spent_usd+?,updated_at=? WHERE id=1", (reserved, actual_cost, utc_now()))
-        conn.execute("UPDATE model_calls SET status=?,reserved_usd=0,estimated_cost=?,input_tokens=?,output_tokens=?,latency_ms=?,cache_hit=? WHERE id=?", (status, actual_cost, input_tokens, output_tokens, latency_ms, int(cache_hit), reservation.id))
+        ledger = conn.execute("SELECT limit_usd,reserved_usd,spent_usd FROM budget_ledger WHERE id=1").fetchone()
+        if not ledger:
+            return
+        spendable = max(0.0, float(ledger["limit_usd"]) - float(ledger["spent_usd"]) - max(0.0, float(ledger["reserved_usd"]) - reserved))
+        accounted_cost = min(actual_cost, spendable)
+        final_status = "budget_capped" if actual_cost > accounted_cost + 1e-9 and status == "complete" else status
+        conn.execute("UPDATE budget_ledger SET reserved_usd=MAX(0,reserved_usd-?),spent_usd=spent_usd+?,updated_at=? WHERE id=1", (reserved, accounted_cost, utc_now()))
+        conn.execute("UPDATE model_calls SET status=?,reserved_usd=0,estimated_cost=?,input_tokens=?,output_tokens=?,latency_ms=?,cache_hit=? WHERE id=?", (final_status, accounted_cost, input_tokens, output_tokens, latency_ms, int(cache_hit), reservation.id))
 
 
 def snapshot() -> dict[str, Any]:
