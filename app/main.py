@@ -105,17 +105,17 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
     if len(data) > settings.max_pdf_mb * 1024 * 1024:
         raise HTTPException(413, f"PDF exceeds the {settings.max_pdf_mb} MB limit")
     digest = hashlib.sha256(data).hexdigest()
-    document_id = f"doc-{digest[:12]}"
-    run_id = f"run-{uuid.uuid4().hex[:12]}"
     settings.ensure_dirs()
-    stored = settings.upload_dir / f"{document_id}.pdf"
-    stored.write_bytes(data)
     with db() as conn:
         if not conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone():
             raise HTTPException(404, "Workspace not found")
         existing = conn.execute("SELECT * FROM documents WHERE workspace_id=? AND sha256=?", (workspace_id, digest)).fetchone()
         if existing:
             return {"document": row_to_dict(existing), "run": None, "deduplicated": True}
+        document_id = f"doc-{hashlib.sha256(f'{workspace_id}:{digest}'.encode()).hexdigest()[:20]}"
+        run_id = f"run-{uuid.uuid4().hex[:12]}"
+        stored = settings.upload_dir / f"{document_id}.pdf"
+        stored.write_bytes(data)
         conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,stored_path,created_at) VALUES(?,?,?,?,?,?,?)", (document_id, workspace_id, file.filename, digest, "queued", str(stored), utc_now()))
         conn.execute("INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", (run_id, workspace_id, document_id, "live", "queued", 0, "Queued", utc_now(), utc_now()))
     background_tasks.add_task(process_document, run_id, document_id, workspace_id, data, file.filename)

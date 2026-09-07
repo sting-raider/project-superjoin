@@ -204,8 +204,10 @@ def _insert_claims(workspace_id: str, document_id: str, candidates: list[dict[st
     inserted = 0
     with db() as conn:
         for item in candidates:
-            claim_id = _id("claim")
             evidence = item.get("evidence") or {}
+            claim_id = _claim_id(workspace_id, document_id, item, evidence)
+            if conn.execute("SELECT 1 FROM claims WHERE id=?", (claim_id,)).fetchone():
+                continue
             created_at = utc_now()
             suspicious = bool(item.get("security_flags") or evidence.get("security_flags")) or not validate_model_claim({**item, "evidence": evidence})
             grounding_status = "quarantined" if suspicious or not evidence else "grounded"
@@ -223,6 +225,22 @@ def _insert_claims(workspace_id: str, document_id: str, candidates: list[dict[st
             persist_interpretation(conn, item, claim_id, created_at)
             inserted += 1
     return inserted
+
+
+def _claim_id(workspace_id: str, document_id: str, item: dict[str, Any], evidence: dict[str, Any]) -> str:
+    identity = {
+        "workspace_id": workspace_id,
+        "document_id": document_id,
+        "subject": item.get("subject"),
+        "predicate": item.get("predicate"),
+        "raw_value": item.get("raw_value"),
+        "period": item.get("period"),
+        "modality": item.get("modality"),
+        "scope": item.get("scope"),
+        "evidence": evidence,
+    }
+    digest = hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return f"claim-{digest[:24]}"
 
 
 def _persist_pages(document_id: str, parsed: Any) -> None:
