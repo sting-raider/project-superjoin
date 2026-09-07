@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: review draft. Updated with the seven requested amendments; implementation remains pending approval.
+Status: implementation in progress under the approved plan. The plan remains the governing scope; benchmark outcomes and justified simplifications are recorded here as they become available.
 
 ## 1. Outcome and governing decisions
 
@@ -78,6 +78,21 @@ Preserve the archive READMEs, original source links, retained-page mappings, and
 The forecast example will be presented as a **likely conflict between reported projections**, with its limitations visible. Synthetic contradictions will test the engine separately and will never be described as original starter evidence.
 
 The supplied screenshots establish the visual direction: forest green, bright green actions, pale surfaces, fine borders, compact spreadsheet-like content, and a right-hand inspection area.
+
+### Implementation evidence recorded so far
+
+- The first locally available parser smoke run (the two-page assignment PDF,
+  not the six-document starter corpus) found equivalent native character counts
+  for pdfplumber and PyMuPDF. PyMuPDF was substantially faster in that smoke
+  run, but its AGPL/commercial licensing remains unresolved for runtime use;
+  therefore pdfplumber remains the compatible primary parser pending the full
+  source-verified 20-page comparison. The reproducible harness and report are
+  `scripts/benchmark_parsers.py`, `docs/PARSER_SELECTION.md`, and
+  `evals/reports/parser-smoke.json`. This is not presented as the 511-page
+  benchmark.
+- The runtime already records parser/version, page quality flags, evidence
+  anchors, and visual-review dispositions so the full corpus comparison can be
+  run without changing the claim contract.
 
 ## 3. Architecture and technology choices
 
