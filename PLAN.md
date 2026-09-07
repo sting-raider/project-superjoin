@@ -187,6 +187,11 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   release their reservation as failed. The Settings API exposes only the
   nonsecret role contract, and the model benchmark checks the relevant role
   endpoint rather than assuming one shared provider.
+- Provider transport is now explicitly provider-neutral: role-specific model
+  names, paths, auth header/scheme, timeout, and dimension-hint settings are
+  configuration values with blank defaults. A fake regression covers an
+  arbitrary local model without a key and an Azure-style deployment path with
+  `api-key` auth; no Gemini-specific runtime branch or model allowlist exists.
 - Trust Gate temporal semantics now overlay `fact_versions` by their immutable
   workspace knowledge revision, so `known_at_revision` returns the historical
   value and version identifier rather than filtering the current fact's local

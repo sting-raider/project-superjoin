@@ -39,6 +39,18 @@ timeout, output budget, and embedding task settings. Secrets are read from the
 environment and are never returned by the Settings API; the Settings screen
 shows only nonsecret capability metadata.
 
+The adapter is configuration-only and has no provider or model allowlist. The
+same variables work with OpenAI, Azure OpenAI, OpenRouter, Together, Groq,
+Ollama, vLLM, or another endpoint that exposes compatible chat and embedding
+routes. Set `*_BASE_URL`, `*_API_KEY` (optional for local services), and the
+role model. Role paths and auth headers are configurable for deployments such
+as Azure (`*_AUTH_HEADER=api-key`, empty `*_AUTH_SCHEME`, and a deployment
+`*_CHAT_PATH`). Set `*_STRUCTURED_OUTPUT_MODE=none` for endpoints that do not
+implement response-format hints, and set `EMBEDDING_INCLUDE_DIMENSIONS=false`
+when an embedding service chooses dimensions server-side. Provider errors,
+missing models, unsupported response formats, and vector dimension mismatches
+remain visible in run telemetry and search responses.
+
 The starter PDFs are third-party publications and are not committed while
 redistribution permission is unresolved. Use
 `python scripts/prepare_dataset.py --input <local-archive-or-directory>` to
