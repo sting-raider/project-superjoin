@@ -18,6 +18,7 @@ from .demo_data import DEMO_CASES
 from .knowledge import resolve_fact
 from .budget import snapshot as budget_snapshot
 from .pipeline import process_document
+from .retrieval import search_claims
 from .seed import seed_demo
 
 app = FastAPI(title="Project SuperJoin", version="0.1.0", description="Evidence-first temporal fact knowledge layer")
@@ -138,6 +139,13 @@ def facts(workspace_id: str = "delhivery", q: str = "", status: str | None = Non
         params.append(max(1, min(limit, 500)))
         rows = conn.execute(f"SELECT * FROM facts WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC LIMIT ?", params).fetchall()
     return {"items": rows_to_dicts(rows), "count": len(rows)}
+
+
+@app.get("/api/v1/search")
+def search(workspace_id: str = "delhivery", q: str = "", limit: int = 20) -> dict[str, Any]:
+    if not q.strip():
+        return {"items": [], "lanes": {"lexical": 0, "dense": 0, "hybrid": 0}, "embedding_available": False}
+    return search_claims(workspace_id, q, max(1, min(limit, 100)))
 
 
 @app.get("/api/v1/facts/{fact_id}")

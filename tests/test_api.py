@@ -71,3 +71,12 @@ def test_upload_rejects_non_pdf_signature() -> None:
     with TestClient(app) as client:
         response = client.post("/api/v1/documents", files={"file": ("notes.txt", b"not a pdf", "text/plain")}, data={"workspace_id": "delhivery"})
         assert response.status_code == 400
+
+
+def test_lexical_search_returns_claims_with_retrieval_metadata() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/search", params={"workspace_id": "india-macro", "q": "GDP FY26", "limit": 10})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["lanes"]["lexical"] >= 1
+        assert payload["items"][0]["workspace_id"] == "india-macro"
