@@ -103,6 +103,6 @@
     "Deterministic hints measure value/evidence coverage; predicate naming remains an open-schema model responsibility.",
     "This synthetic development split is not a live-model or starter-corpus quality claim."
   ],
-  "duration_seconds": 0.005,
-  "code_revision": "cd6941da70b900c6165be962bb34b241530a6d92"
+  "duration_seconds": 0.0103,
+  "code_revision": "a328fc185f612425215099f6daf1ee5c3359ba5b"
 }
