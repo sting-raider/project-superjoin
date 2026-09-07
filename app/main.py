@@ -426,7 +426,13 @@ def reviews(workspace_id: str = "delhivery", include_stale: bool = True) -> dict
 
 @app.get("/api/v1/settings")
 def settings_view() -> dict[str, Any]:
-    return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": available(), "roles": {"extraction": settings.extraction_model, "reasoning": settings.reasoning_model, "vision": settings.vision_model, "embeddings": settings.embedding_model}, "configured_roles": {"extraction": available("extraction"), "reasoning": available("reasoning"), "vision": available("vision"), "embeddings": available("embedding")}, "embedding_dimensions": settings.embedding_dimensions, "budget": budget_snapshot()}
+    roles = {
+        "extraction": {"model": settings.extraction_model, "configured": available("extraction"), "timeout_seconds": settings.ai_timeout_seconds, "max_output_tokens": settings.extraction_max_output_tokens, "concurrency": settings.extraction_concurrency, "structured_output_mode": settings.extraction_structured_output_mode},
+        "reasoning": {"model": settings.reasoning_model, "configured": available("reasoning"), "timeout_seconds": settings.ai_timeout_seconds, "max_output_tokens": settings.reasoning_max_output_tokens, "concurrency": settings.reasoning_concurrency, "structured_output_mode": settings.reasoning_structured_output_mode},
+        "vision": {"model": settings.vision_model, "configured": available("vision"), "timeout_seconds": settings.ai_timeout_seconds, "max_output_tokens": settings.vision_max_output_tokens, "concurrency": settings.vision_concurrency, "structured_output_mode": settings.vision_structured_output_mode},
+        "embeddings": {"model": settings.embedding_model, "configured": available("embedding"), "timeout_seconds": settings.ai_timeout_seconds, "concurrency": settings.embedding_concurrency, "task_type": settings.embedding_task_type, "dimensions": settings.embedding_dimensions},
+    }
+    return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": available(), "roles": roles, "configured_roles": {name: role["configured"] for name, role in roles.items()}, "embedding_dimensions": settings.embedding_dimensions, "budget": budget_snapshot()}
 
 
 @app.post("/api/v1/demo/reset")

@@ -101,8 +101,10 @@ def structured_chat(role: str, system: str, user: str, model: str | None = None,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": 0,
         "max_tokens": max_output_tokens,
-        "response_format": {"type": "json_object"},
     }
+    mode = getattr(settings, f"{role}_structured_output_mode", "json_object")
+    if mode and mode != "none":
+        payload["response_format"] = {"type": mode}
     if max_output_tokens == 1200:
         max_output_tokens = getattr(settings, f"{role}_max_output_tokens", max_output_tokens)
         payload["max_tokens"] = max_output_tokens
@@ -120,8 +122,9 @@ def vision_chat(system: str, user: str, image_bytes: bytes, model: str | None = 
         ],
         "temperature": 0,
         "max_tokens": max_output_tokens,
-        "response_format": {"type": "json_object"},
     }
+    if settings.vision_structured_output_mode and settings.vision_structured_output_mode != "none":
+        payload["response_format"] = {"type": settings.vision_structured_output_mode}
     if max_output_tokens == 1200:
         max_output_tokens = settings.vision_max_output_tokens
         payload["max_tokens"] = max_output_tokens

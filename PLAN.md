@@ -118,6 +118,15 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   receives page text even when deterministic regex discovery finds no claims;
   model evidence still has to match supplied source text before publication.
   The no-key path remains deterministic and never invents a claim.
+- Provider roles now have independent base URLs/keys with shared-value
+  fallbacks, role-specific token limits, timeout/concurrency metadata, and
+  structured-output/task settings. A local fake OpenAI-compatible contract
+  test verifies distinct extraction and embedding endpoints, headers, raw
+  embedding response parsing, and the no-provider state. Embedding requests
+  use content-hash caching and the durable budget ledger; dimension mismatches
+  release their reservation as failed. The Settings API exposes only the
+  nonsecret role contract, and the model benchmark checks the relevant role
+  endpoint rather than assuming one shared provider.
 
 ### Resolved implementation simplifications
 

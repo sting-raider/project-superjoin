@@ -42,9 +42,8 @@ The assignment does not benefit from Neo4j, a graph UI, Redis/Celery, Kubernetes
 
 ## Provider boundary
 
-Extraction, reasoning, vision, and embeddings have independent model/base URL/key settings. Document text is passed as explicitly delimited untrusted content; it never becomes a system instruction and cannot select a tool, endpoint, budget, or eligibility status. Responses are validated and budgeted before they can affect the claim pipeline. With no key, the seeded recorded dataset powers Demo Mode; with a configured endpoint, arbitrary PDFs can enter the same pipeline.
+Extraction, reasoning, vision, and embeddings have independent model/base URL/key settings, timeout/output/concurrency controls, and capability metadata. The Settings API exposes only this nonsecret contract; credentials never leave the process. Document text is passed as explicitly delimited untrusted content; it never becomes a system instruction and cannot select a tool, endpoint, budget, or eligibility status. Responses are validated and budgeted before they can affect the claim pipeline. With no key, the seeded recorded dataset powers Demo Mode; with a configured endpoint, arbitrary PDFs can enter the same pipeline.
 
 ## State and revision model
 
 The source PDF and source claim are retained. A new interpretation, registry correction, review, or document changes the current projection by publishing a new workspace knowledge revision. Older fact versions and review decisions remain addressable. When new evidence changes a reviewed fact family, the previous decision is marked stale; the strict Trust Gate will not silently reuse it.
-

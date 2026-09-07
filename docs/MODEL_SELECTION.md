@@ -5,6 +5,14 @@ same bounded inputs and the durable US$20 budget ledger as application calls,
 records endpoint/model/latency/cost metadata, and validates structured claims
 or the requested 768-dimensional vector length.
 
+The harness checks the role-specific endpoint (`EXTRACTION_*` or
+`EMBEDDING_*`) and never assumes that a shared `AI_BASE_URL` is present. A
+shared URL/key remains a convenience fallback for local setup, while explicit
+role values can point at different compatible services. The runtime records
+nonsecret timeout, output-token, concurrency, structured-output, and embedding
+task settings in `/api/v1/settings` so a run can be reproduced without
+exposing credentials.
+
 The reference candidates remain configuration values until a local endpoint is
 available:
 

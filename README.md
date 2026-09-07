@@ -24,8 +24,10 @@ documents, claims, fact history, JSON, CSV, and XLSX.
 
 To process a never-seen PDF, provide an OpenAI-compatible endpoint in a local
 `.env` (see `.env.example`) and restart Compose. Extraction, reasoning, vision,
-and embedding roles are configured independently. Secrets are read from the
-environment and are never returned by the Settings API.
+and embedding roles are configured independently, including endpoint, model,
+timeout, output budget, and embedding task settings. Secrets are read from the
+environment and are never returned by the Settings API; the Settings screen
+shows only nonsecret capability metadata.
 
 The starter PDFs are third-party publications and are not committed while
 redistribution permission is unresolved. Use

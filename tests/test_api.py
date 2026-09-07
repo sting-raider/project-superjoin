@@ -99,3 +99,15 @@ def test_read_models_and_exports_are_available() -> None:
         xlsx_export = client.get("/api/v1/exports/facts?workspace_id=delhivery&format=xlsx")
         assert xlsx_export.status_code == 200
         assert xlsx_export.content[:2] == b"PK"
+
+
+def test_settings_exposes_nonsecret_independent_role_contract() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/settings")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["project"] == "Project SuperJoin"
+        assert payload["roles"]["extraction"]["model"]
+        assert payload["roles"]["embeddings"]["dimensions"] == 768
+        assert payload["roles"]["vision"]["structured_output_mode"] == "json_object"
+        assert payload["configured_roles"] == {"extraction": False, "reasoning": False, "vision": False, "embeddings": False}
