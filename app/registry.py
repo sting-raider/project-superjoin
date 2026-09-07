@@ -135,7 +135,11 @@ def _materialize_resolution(
 def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> int:
     with db() as conn:
         rows = conn.execute(
-            "SELECT id,subject,predicate,value_type,evidence_json FROM claims WHERE workspace_id=? AND extraction_status='accepted'",
+            """SELECT c.id,c.subject,c.predicate,c.value_type,c.evidence_json
+            FROM claims c JOIN claim_interpretations ci ON ci.claim_id=c.id
+              AND ci.version=(SELECT MAX(ci2.version) FROM claim_interpretations ci2 WHERE ci2.claim_id=c.id)
+            WHERE c.workspace_id=? AND c.extraction_status='accepted'
+              AND (ci.entity_status<>'resolved' OR ci.predicate_status<>'resolved')""",
             (workspace_id,),
         ).fetchall()
     resolutions: dict[tuple[str, str, str], dict[str, Any]] = {}

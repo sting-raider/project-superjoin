@@ -38,6 +38,13 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
             ORDER BY c.id""",
             (workspace_id,),
         ).fetchall()
+        existing_pairs = {
+            tuple(sorted((row["claim_a"], row["claim_b"])))
+            for row in conn.execute(
+                "SELECT claim_a,claim_b FROM relationships WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchall()
+        }
     claims = []
     for row in rows:
         claim = dict(row)
@@ -60,6 +67,8 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
         for index, left in enumerate(group):
             for right in group[index + 1 :]:
                 claim_a, claim_b = sorted((left, right), key=lambda item: item["id"])
+                if (claim_a["id"], claim_b["id"]) in existing_pairs:
+                    continue
                 relationship_type, reason, dimensions, confidence = compare_claim_pair(claim_a, claim_b)
                 if relationship_type == "UNRELATED":
                     semantic = _semantic_relationship(claim_a, claim_b, run_id)

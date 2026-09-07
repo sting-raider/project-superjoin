@@ -60,6 +60,7 @@ def test_live_sqlite_relationship_uses_precision_and_aggregates_evidence(tmp_pat
                 )
                 conn.execute("INSERT INTO claims_fts(claim_id,workspace_id,subject,predicate,raw_value,period,modality,scope) VALUES(?,?,?,?,?,?,?,?)", (claim_id, "w", "Delhivery", "revenue_from_services", value, "FY24", "actual", "consolidated"))
         assess_relationships("w")
+        assert assess_relationships("w") == 0
         rebuild_workspace("w")
         with db() as conn:
             relationship = conn.execute("SELECT relationship_type FROM relationships WHERE workspace_id='w'").fetchone()
