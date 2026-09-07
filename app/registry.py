@@ -14,8 +14,6 @@ from .providers import ProviderError, available, embed, input_hash, structured_c
 from .security import untrusted_document_block
 
 REGISTRY_RELATIONS = {"equivalent", "broader", "narrower", "related", "new", "uncertain"}
-LEXICAL_AUTO_THRESHOLD = 0.94
-EMBEDDING_AUTO_THRESHOLD = 0.90
 SEMANTIC_CANDIDATE_THRESHOLD = 0.68
 
 
@@ -317,11 +315,9 @@ def _resolve_staged(
     if not candidates:
         return _new_resolution(kind, source, value_kind)
     lexical = _lexical_candidates(source, candidates)
-    if lexical and lexical[0]["score"] >= LEXICAL_AUTO_THRESHOLD:
-        return _resolved(lexical[0], "lexical", value_kind)
     embedded = _embedding_candidates(source, candidates, run_id)
-    if embedded and embedded[0]["score"] >= EMBEDDING_AUTO_THRESHOLD:
-        return _resolved(embedded[0], "embedding", value_kind)
+    # Similarity retrieves candidates; it does not establish equivalence.
+    # Only exact identity, confirmed aliases, or a semantic decision can merge.
     combined = _merge_candidates(lexical, embedded)[:8]
     if combined and combined[0]["score"] >= SEMANTIC_CANDIDATE_THRESHOLD:
         semantic = _semantic_resolution(

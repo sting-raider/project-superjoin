@@ -85,6 +85,25 @@ The supplied screenshots establish the visual direction: forest green, bright gr
 
 ### Implementation evidence recorded so far
 
+- Generalization correction remains **incomplete**. The production parser no
+  longer branches on starter entities or predicates; extraction now schedules
+  bounded batches over all native text, and canonical publication groups source
+  claims into persisted fact families. The synthetic provider tests verify
+  transport, grounding, and publication contracts; they do not measure actual
+  model discovery quality. Similarity retrieves registry candidates and must
+  never establish equivalence without semantic confirmation or a confirmed alias.
+- The local starter archive was found and verified by hashes and page counts.
+  A production-pipeline baseline at commit `6f06ee5` processed all six PDFs and
+  511 pages in 1,646.668 seconds with no configured providers. It produced
+  19,551 accepted numeric hints, 21 quarantined hints, 9,846 active fact families,
+  and 110,771 relationships. **Exact demo-case claim matches were 0/10 and
+  required relationship matches were 0/4.** These counts expose noisy offline
+  discovery and do not establish trustworthy extraction or reasoning quality.
+  The report uses existing demo case metadata as a diagnostic reference, not an
+  independently annotated gold set. See `evals/reports/starter-corpus-e2e.json`.
+  A provider-backed run, independently verified gold annotations, and a demo
+  snapshot generated from actual production extraction remain required.
+
 - The first locally available parser smoke run (the two-page assignment PDF,
   not the six-document starter corpus) found equivalent native character counts
   for pdfplumber and PyMuPDF. PyMuPDF was substantially faster in that smoke

@@ -45,10 +45,10 @@ def test_unseen_predicate_is_immediately_usable_without_code_change(tmp_path: Pa
         _restore_database(original_database, original_upload)
 
 
-def test_embedding_candidate_precedes_semantic_resolution(monkeypatch, tmp_path: Path) -> None:
+def test_embedding_similarity_cannot_confirm_equivalence(monkeypatch, tmp_path: Path) -> None:
     original_database, original_upload = _use_database(tmp_path / "embedding-registry.sqlite3")
     try:
-        existing = observe_claim_schema(
+        observe_claim_schema(
             "w", "Nimbus Cloud", "net_revenue_retention", "percentage"
         )["predicate"]
         monkeypatch.setattr(
@@ -58,14 +58,24 @@ def test_embedding_candidate_precedes_semantic_resolution(monkeypatch, tmp_path:
             ],
         )
 
-        def semantic_must_not_run(*args, **kwargs):
-            raise AssertionError("semantic resolver ran after a decisive embedding match")
-
-        monkeypatch.setattr("app.registry._semantic_resolution", semantic_must_not_run)
+        monkeypatch.setattr("app.registry._semantic_resolution", lambda *args: None)
         result = resolve_predicate("w", "customer dollar retention", "percentage")
-        assert result["id"] == existing["id"]
-        assert result["match"] == "embedding"
-        assert result["relation"] == "equivalent"
+        assert result["id"] is None
+        assert result["status"] == "uncertain"
+        assert result["relation"] == "uncertain"
+    finally:
+        _restore_database(original_database, original_upload)
+
+
+def test_reordered_predicate_tokens_require_semantic_confirmation(monkeypatch, tmp_path: Path) -> None:
+    original_database, original_upload = _use_database(tmp_path / "lexical-registry.sqlite3")
+    try:
+        observe_claim_schema("w", "Example", "imports_from_exports", "number")
+        monkeypatch.setattr("app.registry._embedding_candidates", lambda *args: [])
+        monkeypatch.setattr("app.registry._semantic_resolution", lambda *args: None)
+        result = resolve_predicate("w", "exports_from_imports", "number")
+        assert result["id"] is None
+        assert result["relation"] == "uncertain"
     finally:
         _restore_database(original_database, original_upload)
 
