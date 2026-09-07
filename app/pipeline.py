@@ -9,6 +9,7 @@ from .config import settings
 from .db import db, utc_now
 from .normalization import compare_numeric
 from .parser import candidate_claims, parse_pdf
+from .provenance import persist_anchor, persist_interpretation, persist_page_artifacts
 from .providers import ProviderError, available, input_hash, structured_chat
 
 
@@ -22,6 +23,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         _update_run(run_id, 5, "Parsing PDF pages")
         parsed = parse_pdf(data)
         _update_document(document_id, page_count=len(parsed.pages), parser=parsed.parser, quality=sum(p.quality_score for p in parsed.pages) / max(len(parsed.pages), 1), status="processing")
+        _persist_pages(document_id, parsed)
         _update_run(run_id, 24, f"Parsed {len(parsed.pages)} pages")
         all_candidates: list[dict[str, Any]] = []
         for page in parsed.pages:
@@ -67,15 +69,25 @@ def _insert_claims(workspace_id: str, document_id: str, candidates: list[dict[st
         for item in candidates:
             claim_id = _id("claim")
             evidence = item.get("evidence") or {}
+            created_at = utc_now()
             conn.execute(
                 """INSERT INTO claims
                 (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,grounding_status,extraction_status,created_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (claim_id, workspace_id, document_id, str(item.get("subject") or "Document subject"), str(item.get("predicate") or "unknown_predicate"), str(item.get("raw_value") or ""), _json_value(item.get("normalized_value")), str(item.get("value_type") or "text"), item.get("unit"), item.get("period"), item.get("modality"), item.get("scope"), json.dumps(evidence), "grounded" if evidence else "quarantined", "accepted" if evidence else "quarantined", utc_now()),
+                (claim_id, workspace_id, document_id, str(item.get("subject") or "Document subject"), str(item.get("predicate") or "unknown_predicate"), str(item.get("raw_value") or ""), _json_value(item.get("normalized_value")), str(item.get("value_type") or "text"), item.get("unit"), item.get("period"), item.get("modality"), item.get("scope"), json.dumps(evidence), "grounded" if evidence else "quarantined", "accepted" if evidence else "quarantined", created_at),
             )
             conn.execute("INSERT INTO claims_fts(claim_id,workspace_id,subject,predicate,raw_value,period,modality,scope) VALUES(?,?,?,?,?,?,?,?)", (claim_id, workspace_id, item.get("subject", ""), item.get("predicate", ""), item.get("raw_value", ""), item.get("period") or "", item.get("modality") or "", item.get("scope") or ""))
+            if evidence:
+                anchor_id = persist_anchor(conn, document_id, evidence)
+                conn.execute("INSERT OR IGNORE INTO claim_evidence(claim_id,anchor_id,purpose,created_at) VALUES(?,?,?,?)", (claim_id, anchor_id, "assertion", created_at))
+            persist_interpretation(conn, item, claim_id, created_at)
             inserted += 1
     return inserted
+
+
+def _persist_pages(document_id: str, parsed: Any) -> None:
+    with db() as conn:
+        persist_page_artifacts(conn, document_id, parsed)
 
 
 def _resolve_workspace(workspace_id: str, run_id: str) -> None:
@@ -108,4 +120,3 @@ def _update_document(document_id: str, **fields: Any) -> None:
     assignments = ",".join(f"{key}=?" for key in fields)
     with db() as conn:
         conn.execute(f"UPDATE documents SET {assignments} WHERE id=?", (*fields.values(), document_id))
-

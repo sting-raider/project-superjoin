@@ -28,6 +28,7 @@ class ParsedDocument:
     pages: list[ParsedPage]
     sha256: str
     parser: str
+    parser_version: str
 
 
 def _quality(text: str, words: list[dict[str, Any]], page: Any) -> tuple[float, list[str]]:
@@ -56,7 +57,7 @@ def parse_pdf(data: bytes) -> ParsedDocument:
             words = page.extract_words(x_tolerance=1, y_tolerance=3, keep_blank_chars=False) or []
             score, flags = _quality(text, words, page)
             pages.append(ParsedPage(index, float(page.width), float(page.height), text, words, score, flags))
-    return ParsedDocument(pages, hashlib.sha256(data).hexdigest(), "pdfplumber")
+    return ParsedDocument(pages, hashlib.sha256(data).hexdigest(), "pdfplumber", getattr(pdfplumber, "__version__", "unknown"))
 
 
 def evidence_for(page: ParsedPage, start: int, end: int, excerpt: str) -> dict[str, Any]:
@@ -157,4 +158,3 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
             seen.add(key)
             result.append(candidate)
     return result
-

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .db import db, utc_now
 from .demo_data import DEMO_CASES, DEMO_CLAIMS, DEMO_DOCUMENTS, DEMO_RELATIONSHIPS, DEMO_WORKSPACES
+from .provenance import page_artifact_id, persist_anchor, persist_interpretation
 
 
 def seed_demo() -> None:
@@ -25,13 +26,26 @@ def seed_demo() -> None:
                 (document["id"], document["workspace_id"], document["name"], document["publisher"], document["source_url"], digest, document["page_count"], "complete", "recorded-demo", 0.96, document["published_at"], utc_now()),
             )
         for claim in DEMO_CLAIMS:
+            created_at = utc_now()
             conn.execute(
                 """INSERT OR IGNORE INTO claims
                 (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,grounding_status,extraction_status,created_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (claim["id"], claim["workspace_id"], claim["document_id"], claim["subject"], claim["predicate"], claim["raw_value"], claim["normalized_value"], claim["value_type"], claim["unit"], claim["period"], claim["modality"], claim["scope"], json.dumps(claim["evidence"]), "grounded", "accepted", utc_now()),
+                (claim["id"], claim["workspace_id"], claim["document_id"], claim["subject"], claim["predicate"], claim["raw_value"], claim["normalized_value"], claim["value_type"], claim["unit"], claim["period"], claim["modality"], claim["scope"], json.dumps(claim["evidence"]), "grounded", "accepted", created_at),
             )
             conn.execute("INSERT OR IGNORE INTO claims_fts(claim_id,workspace_id,subject,predicate,raw_value,period,modality,scope) VALUES(?,?,?,?,?,?,?,?)", (claim["id"], claim["workspace_id"], claim["subject"], claim["predicate"], claim["raw_value"], claim["period"] or "", claim["modality"] or "", claim["scope"] or ""))
+            evidence = claim["evidence"]
+            page = int(evidence.get("pdf_page") or 1)
+            page_id = page_artifact_id(claim["document_id"], page)
+            conn.execute(
+                """INSERT OR IGNORE INTO page_artifacts
+                (id,document_id,page_number,width,height,native_text,parser,parser_version,quality_score,quality_flags_json,disposition,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (page_id, claim["document_id"], page, 1200.0, 1600.0, evidence.get("text", ""), "recorded-demo", "recorded-demo-1", 0.96, "[]", "native", created_at),
+            )
+            anchor_id = persist_anchor(conn, claim["document_id"], evidence)
+            conn.execute("INSERT OR IGNORE INTO claim_evidence(claim_id,anchor_id,purpose,created_at) VALUES(?,?,?,?)", (claim["id"], anchor_id, "assertion", created_at))
+            persist_interpretation(conn, claim, claim["id"], created_at)
         for relationship in DEMO_RELATIONSHIPS:
             conn.execute(
                 """INSERT OR IGNORE INTO relationships
@@ -62,4 +76,3 @@ def _seed_facts(conn) -> None:
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (fact_id, row["workspace_id"], row["subject"], row["predicate"], row["normalized_value"], row["raw_value"], row["value_type"], row["unit"], row["period"], row["modality"], row["scope"], status, reason, row["evidence_json"], 1, utc_now()),
         )
-

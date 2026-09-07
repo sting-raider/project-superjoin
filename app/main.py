@@ -199,7 +199,7 @@ def settings_view() -> dict[str, Any]:
 @app.post("/api/v1/demo/reset")
 def reset_demo() -> dict[str, str]:
     with db() as conn:
-        for table in ("reviews", "changes", "relationships", "facts", "claims_fts", "claims", "documents", "runs"):
+        for table in ("reviews", "fact_memberships", "fact_versions", "claim_evidence", "claim_interpretations", "changes", "relationships", "facts", "claims_fts", "claims", "evidence_anchors", "page_artifacts", "documents", "run_events", "runs"):
             conn.execute(f"DELETE FROM {table}")
         conn.execute("UPDATE workspaces SET active_revision=1")
     seed_demo()
@@ -217,4 +217,3 @@ def index() -> HTMLResponse:
     if path.exists():
         return HTMLResponse(path.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>Project SuperJoin</h1><p>Frontend has not been built yet.</p>")
-
