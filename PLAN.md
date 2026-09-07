@@ -155,6 +155,10 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   generated relationship IDs are mapped to required-case bookmarks only at the
   demo API boundary. A clean-database regression covers all four relationship
   outcomes.
+- The live workspace UI no longer selects a starter company, country, or
+  predicate by name. It chooses the first available workspace and derives the
+  Trust Gate example from that workspace's first fact; the leakage scan covers
+  the frontend source as well as backend production modules.
 - Reported decimal precision is now persisted on extracted claims and used by
   deterministic relationship comparison. A live SQLite regression covers the
   crore/million rounding case, aggregates both evidence records through the
