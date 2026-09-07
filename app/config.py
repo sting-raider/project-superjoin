@@ -36,6 +36,8 @@ class Settings:
     reasoning_max_output_tokens: int = int(os.getenv("REASONING_MAX_OUTPUT_TOKENS", "1200"))
     vision_max_output_tokens: int = int(os.getenv("VISION_MAX_OUTPUT_TOKENS", "1200"))
     extraction_concurrency: int = int(os.getenv("EXTRACTION_CONCURRENCY", "2"))
+    extraction_batch_pages: int = int(os.getenv("EXTRACTION_BATCH_PAGES", "6"))
+    extraction_batch_chars: int = int(os.getenv("EXTRACTION_BATCH_CHARS", "24000"))
     reasoning_concurrency: int = int(os.getenv("REASONING_CONCURRENCY", "2"))
     vision_concurrency: int = int(os.getenv("VISION_CONCURRENCY", "2"))
     embedding_concurrency: int = int(os.getenv("EMBEDDING_CONCURRENCY", "2"))

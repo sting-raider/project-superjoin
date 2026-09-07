@@ -2,7 +2,8 @@ from pathlib import Path
 
 from app.config import settings
 from app.db import db, init_db
-from app.pipeline import _claim_id, _model_extract
+from app.parser import ParsedPage
+from app.pipeline import _claim_id, _model_extract, build_extraction_batches
 from app.providers import ProviderResult
 
 
@@ -43,3 +44,28 @@ def test_malformed_extraction_gets_one_budgeted_repair(monkeypatch, tmp_path: Pa
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_extraction_batches_cover_useful_claims_after_page_twenty_four() -> None:
+    pages = [
+        ParsedPage(
+            index=index,
+            width=1000,
+            height=1000,
+            text=f"Section {index + 1}: operational metric is {index + 1}%.",
+            words=[],
+            quality_score=0.9,
+            flags=[],
+        )
+        for index in range(40)
+    ]
+    batches = build_extraction_batches(pages, [])
+    covered = {
+        page["pdf_page"]
+        for batch in batches
+        for page in batch.pages
+    }
+    assert covered == set(range(1, 41))
+    assert any(batch.page_start <= 37 <= batch.page_end for batch in batches)
+    assert all(len({page["pdf_page"] for page in batch.pages}) <= settings.extraction_batch_pages for batch in batches)
+    assert all(sum(len(page["text"]) for page in batch.pages) <= settings.extraction_batch_chars for batch in batches)

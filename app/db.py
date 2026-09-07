@@ -257,6 +257,22 @@ CREATE TABLE IF NOT EXISTS run_events (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_run_events_run ON run_events(run_id, id);
+CREATE TABLE IF NOT EXISTS extraction_batches (
+  id TEXT PRIMARY KEY,
+  run_id TEXT REFERENCES runs(id),
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  batch_index INTEGER NOT NULL,
+  page_start INTEGER NOT NULL,
+  page_end INTEGER NOT NULL,
+  input_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'planned',
+  claim_count INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(document_id, input_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_extraction_batches_document ON extraction_batches(document_id, batch_index);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id),
