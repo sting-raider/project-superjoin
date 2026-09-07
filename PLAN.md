@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: implementation is continuing under the approved plan. The production-generalization correction and provider-neutral transport are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, while source clearances, live provider comparisons, and the final video remain external inputs.
+Status: implementation is continuing under the approved plan. The production-generalization correction and provider-neutral transport are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and a live NVIDIA extraction run is recorded; source clearances, comparative provider selection, and the final video remain external inputs.
 
 ## 1. Outcome and governing decisions
 
@@ -143,6 +143,16 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   provider endpoint/key is configured; no live model quality or cost result is
   being claimed. The candidates and exact comparison contract remain recorded
   in `docs/MODEL_SELECTION.md` and the two reports under `evals/reports/`.
+- A live NVIDIA NIM extraction run at commit `3d0826b` covered all six starter
+  PDFs (511 pages) through the generic bounded pipeline. It published 9,362
+  accepted and 14 quarantined claims from 193 extraction calls, with 174
+  complete and 19 failed calls and US$2.056295 estimated spend. Four of ten
+  diagnostic values matched value and page; exact diagnostic claim recall was
+  0/10. Reasoning, vision, and embeddings were intentionally unconfigured, so
+  the report records deterministic relationship limits, visual-review pages,
+  and no dense-retrieval result. This is measured compatibility/coverage
+  evidence, not a comparative model-selection claim; see
+  `docs/MODEL_SELECTION.md` and `evals/reports/starter-corpus-e2e-nim.json`.
 - The synthetic out-of-domain gold contract is now measured offline by
   `scripts/evaluate_gold_fixture.py`: five numeric records have 1.0
   value/page recall and 1.0 evidence-grounding precision, predicate-hint

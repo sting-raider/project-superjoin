@@ -33,3 +33,23 @@ Transient 429/5xx and connection/timeout failures use bounded, configurable
 exponential backoff and honor a provider `Retry-After` value; retries remain
 inside the same explicit budgeted request and never switch providers
 implicitly.
+
+## NVIDIA NIM live compatibility run
+
+On 2026-09-08, the six locally supplied starter PDFs were processed through
+the generic extraction lane using NVIDIA NIM model
+`nvidia/nemotron-3-super-120b-a12b` at
+`https://integrate.api.nvidia.com/v1`. The run covered 511 pages and 66
+bounded extraction batches, published 9,362 accepted claims and 14 quarantined
+claims, and recorded 193 extraction calls (174 complete, 19 failed) with
+US$2.056295 estimated spend under the project ledger. Four of the ten
+diagnostic values matched value and page; exact diagnostic claim recall was
+0/10, so this is an honest compatibility/coverage result rather than a claim
+that the model was selected as the reference extractor.
+
+The reasoning, vision, and embedding roles were intentionally unconfigured.
+Relationships therefore used deterministic comparison only, image-dominant
+pages remained in visual review, and dense retrieval was not evaluated. The
+full machine-readable report is
+`evals/reports/starter-corpus-e2e-nim.json`; it contains nonsecret model and
+telemetry metadata but no API key or copied page text.
