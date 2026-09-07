@@ -102,3 +102,6 @@ cd web; npm run build
 
 The project name is **Project SuperJoin** throughout the product. The
 repository name remains `project-superjoin`.
+
+The Docker runtime installs the pinned Python set in `requirements.lock`; the
+web build uses the committed `web/package-lock.json`.
