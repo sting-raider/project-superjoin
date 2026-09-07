@@ -107,6 +107,35 @@ def evaluate(
             "relationships": conn.execute("SELECT COUNT(*) AS n FROM relationships").fetchone()["n"],
             "visual_review_pages": conn.execute("SELECT COUNT(*) AS n FROM page_artifacts WHERE disposition='visual-review'").fetchone()["n"],
         }
+        call_rows = conn.execute(
+            "SELECT role,status,attempts,estimated_cost,latency_ms FROM model_calls"
+        ).fetchall()
+    provider_telemetry: dict[str, dict[str, Any]] = {}
+    for row in call_rows:
+        lane = provider_telemetry.setdefault(
+            row["role"],
+            {
+                "calls": 0,
+                "complete": 0,
+                "failed": 0,
+                "attempts": 0,
+                "estimated_cost_usd": 0.0,
+                "latency_ms": 0,
+            },
+        )
+        lane["calls"] += 1
+        lane["complete"] += int(row["status"] == "complete")
+        lane["failed"] += int(row["status"] not in {"complete", "cache_hit"})
+        lane["attempts"] += max(1, int(row["attempts"] or 1))
+        lane["estimated_cost_usd"] += float(row["estimated_cost"] or 0.0)
+        lane["latency_ms"] += int(row["latency_ms"] or 0)
+    for lane in provider_telemetry.values():
+        lane["estimated_cost_usd"] = round(lane["estimated_cost_usd"], 6)
+    unavailable = [
+        role
+        for role in ("extraction", "reasoning", "vision", "embedding")
+        if not available(role)
+    ]
     exact_claims = sum(item["exact_match"] for item in expected_results)
     result = {
         "report_version": "1.0",
@@ -118,6 +147,13 @@ def evaluate(
         "reference_kind": "demo-case diagnostic reference; not independent gold",
         "generated_at": utc_now(),
         "provider_roles": {role: available(role) for role in ("extraction", "reasoning", "vision", "embedding")},
+        "provider_models": {
+            "extraction": settings.extraction_model,
+            "reasoning": settings.reasoning_model,
+            "vision": settings.vision_model,
+            "embedding": settings.embedding_model,
+        },
+        "provider_telemetry": provider_telemetry,
         "mode": "live-provider" if available("extraction") else "offline-generic-fallback",
         "anti_leakage": "Starter metadata is read only after production processing for measurement.",
         "duration_seconds": round(time.perf_counter() - started, 3),
@@ -131,9 +167,21 @@ def evaluate(
         },
         "expected_relationships": relationship_results,
         "limitations": [
-            "No extraction, reasoning, vision, or embedding provider was configured." if not available() else None,
-            "Offline deterministic hints are intentionally not a substitute for open-schema semantic extraction." if not available("extraction") else None,
-        ],
+            f"The {role} provider role was not configured; dependent work remains unavailable or deterministic-only."
+            for role in unavailable
+        ]
+        + ([
+            "Offline deterministic hints are intentionally not a substitute for open-schema semantic extraction."
+        ] if not available("extraction") else [])
+        + ([
+            "Relationship results use deterministic comparison only because the reasoning role was not configured."
+        ] if not available("reasoning") else [])
+        + ([
+            "Visual pages remain in review because the configured extraction model is not a vision capability."
+        ] if not available("vision") else [])
+        + ([
+            "Dense retrieval and registry embedding candidates were not evaluated because the embedding role was not configured."
+        ] if not available("embedding") else []),
     }
     result["limitations"] = [item for item in result["limitations"] if item]
     output_path.parent.mkdir(parents=True, exist_ok=True)

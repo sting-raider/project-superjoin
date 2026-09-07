@@ -45,3 +45,22 @@ def test_model_benchmark_skip_reports_are_role_specific_and_keyless_local_safe()
         assert "role base URL and model" in report["reason"]
         assert "API key is optional" in report["reason"]
         assert "AI_BASE_URL and AI_API_KEY" not in report["reason"]
+
+
+def test_live_nim_report_preserves_role_limitations_and_call_telemetry() -> None:
+    report_path = ROOT / "evals" / "reports" / "starter-corpus-e2e-nim.json"
+    if not report_path.exists():
+        return
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["mode"] == "live-provider"
+    assert report["provider_roles"]["extraction"] is True
+    assert report["provider_roles"]["reasoning"] is False
+    assert report["provider_roles"]["vision"] is False
+    assert report["provider_roles"]["embedding"] is False
+    assert report["provider_models"]["extraction"]
+    extraction = report["provider_telemetry"]["extraction"]
+    assert extraction["calls"] > 0
+    assert extraction["attempts"] >= extraction["calls"]
+    assert any("reasoning provider role was not configured" in item for item in report["limitations"])
+    assert any("Visual pages remain in review" in item for item in report["limitations"])
+    assert any("Dense retrieval" in item for item in report["limitations"])
