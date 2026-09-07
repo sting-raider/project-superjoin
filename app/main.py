@@ -166,17 +166,25 @@ def retry_run(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
     return {"run_id": new_run_id, "document_id": document["id"]}
 
 
+@app.post("/api/v1/runs/{run_id}/resume", status_code=202)
+def resume_run(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    return retry_run(run_id, background_tasks)
+
+
 @app.get("/api/v1/runs/{run_id}/events")
-async def run_events(run_id: str) -> StreamingResponse:
+async def run_events(run_id: str, after_id: int = 0) -> StreamingResponse:
     async def events():
-        last = None
+        last_event_id = max(0, after_id)
         for _ in range(120):
             with db() as conn:
                 row = row_to_dict(conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone())
-            if row and row != last:
-                last = row
-                yield f"data: {json.dumps(row)}\n\n"
-            if row and row.get("status") in {"complete", "failed"}:
+                event_rows = rows_to_dicts(conn.execute("SELECT * FROM run_events WHERE run_id=? AND id>? ORDER BY id LIMIT 500", (run_id, last_event_id)).fetchall())
+            if not row:
+                return
+            for event in event_rows:
+                last_event_id = int(event["id"])
+                yield f"id: {last_event_id}\ndata: {json.dumps(event)}\n\n"
+            if row.get("status") in {"complete", "failed", "cancelled"} and not event_rows:
                 break
             await asyncio.sleep(0.5)
     return StreamingResponse(events(), media_type="text/event-stream")
