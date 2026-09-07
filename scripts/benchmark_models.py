@@ -23,7 +23,16 @@ def _inputs(path: Path | None) -> list[dict[str, Any]]:
 
 def benchmark(role: str, models: list[str], rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not available(role):
-        return {"status": "skipped", "reason": f"{role} provider is not configured", "role": role, "candidates": models, "cases": len(rows)}
+        return {
+            "status": "skipped",
+            "reason": (
+                f"{role} provider is not configured: a role base URL and model are required; "
+                "an API key is optional for local OpenAI-compatible endpoints"
+            ),
+            "role": role,
+            "candidates": models,
+            "cases": len(rows),
+        }
     init_db()
     results = []
     for model in models:

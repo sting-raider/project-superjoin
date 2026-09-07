@@ -1,6 +1,6 @@
 {
   "status": "skipped",
-  "reason": "AI_BASE_URL and AI_API_KEY are not configured",
+  "reason": "extraction provider is not configured: a role base URL and model are required; an API key is optional for local OpenAI-compatible endpoints",
   "role": "extraction",
   "candidates": [
     "gemini-3.5-flash-lite",

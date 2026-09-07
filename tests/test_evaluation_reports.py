@@ -36,3 +36,12 @@ def test_synthetic_gold_report_measures_offline_generalization_honestly() -> Non
     assert report["metrics"]["semantic_provider_required"] == 1
     assert report["coverage"]["max_source_page"] == 33
     assert any("not a live-model" in item for item in report["limitations"])
+
+
+def test_model_benchmark_skip_reports_are_role_specific_and_keyless_local_safe() -> None:
+    for name in ("extraction-model-benchmark.json", "embedding-model-benchmark.json"):
+        report = json.loads((ROOT / "evals" / "reports" / name).read_text(encoding="utf-8"))
+        assert report["status"] == "skipped"
+        assert "role base URL and model" in report["reason"]
+        assert "API key is optional" in report["reason"]
+        assert "AI_BASE_URL and AI_API_KEY" not in report["reason"]
