@@ -6,6 +6,7 @@ The table maps the approved plan to the implemented review surface. File names a
 |---|---|---|
 | Immutable claims and exact provenance | `source_claims`, `claim_evidence`, `page_artifacts`, `evidence_anchors`; `app/provenance.py` | Evidence inspector and fact detail endpoints |
 | Numerical and semantic facts | `app/parser.py`, `app/normalization.py`, `app/pipeline.py` | Normalization tests; seeded revenue/director cases |
+| Starter-blind arbitrary-PDF extraction | Full-document bounded batches, open-vocabulary hints, semantic model lane, derived leakage scan in `tests/test_anti_leakage.py` | Out-of-domain SaaS/manufacturing/executive fixture; corrected six-PDF offline report |
 | Deterministic normalization | `app/normalization.py` | `tests/test_normalization.py` |
 | Temporal reasoning | `parse_period`, interval/modality fields, `app/knowledge.py` | FY25 vintage reconciliation and director supersedence cases |
 | Corroboration/contradiction/reconciliation/supersedence | `relationship_assessments`, `compare_claim_pair` | Cases endpoint and relationship tests |
@@ -26,4 +27,3 @@ The table maps the approved plan to the implemented review surface. File names a
 ## Explicitly bounded claims
 
 The repository does not claim live model quality without a provider key, does not claim the full 511-page parser benchmark without the source-verified archive, and does not redistribute starter PDFs before a rights audit. Those boundaries are part of the evidence-first behavior and are reflected in PLAN.md and the reports.
-
