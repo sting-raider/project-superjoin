@@ -1,0 +1,222 @@
+{
+  "report_version": "1.0",
+  "project": "Project SuperJoin",
+  "kind": "starter-corpus-production-pipeline",
+  "code_revision": "e16b47c4cb5d112264acc7b54e3ba1dd481e745c",
+  "reference_kind": "demo-case diagnostic reference; not independent gold",
+  "generated_at": "2026-09-07T19:19:31.091391+00:00",
+  "provider_roles": {
+    "extraction": false,
+    "reasoning": false,
+    "vision": false,
+    "embedding": false
+  },
+  "mode": "offline-generic-fallback",
+  "anti_leakage": "Starter metadata is read only after production processing for measurement.",
+  "duration_seconds": 998.379,
+  "totals": {
+    "documents": 6,
+    "pages": 511,
+    "accepted_claims": 14607,
+    "quarantined_claims": 20,
+    "active_fact_families": 7843,
+    "relationships": 55751,
+    "visual_review_pages": 6
+  },
+  "documents": [
+    {
+      "document_id": "delhivery-prospectus",
+      "sha256": "0d7e71e1766ef33063e52a2140936fbe400c2950e58e93489d031be0b19d8ce7",
+      "status": "complete",
+      "message": "Complete",
+      "duration_seconds": 84.151,
+      "pages": 100,
+      "accepted_claims": 1731,
+      "quarantined_claims": 3,
+      "visual_review_pages": 1,
+      "extraction_batches": 0
+    },
+    {
+      "document_id": "delhivery-annual",
+      "sha256": "de6d79adc0667d66f5415fa4fcec4b485a19073744adce44dfca3e34e529fa7a",
+      "status": "complete",
+      "message": "Complete",
+      "duration_seconds": 320.488,
+      "pages": 100,
+      "accepted_claims": 3827,
+      "quarantined_claims": 6,
+      "visual_review_pages": 0,
+      "extraction_batches": 0
+    },
+    {
+      "document_id": "delhivery-presentation",
+      "sha256": "5ca307085c96c1fcbfd2d99a7ad40dcbd8958079b3833063520e4e84fdded2a8",
+      "status": "complete",
+      "message": "Complete",
+      "duration_seconds": 79.789,
+      "pages": 27,
+      "accepted_claims": 706,
+      "quarantined_claims": 0,
+      "visual_review_pages": 4,
+      "extraction_batches": 0
+    },
+    {
+      "document_id": "economic-survey",
+      "sha256": "86f2e79a3b7b4a3698907897297b9e17fe06d39c074d52e68303066d18a2cf71",
+      "status": "complete",
+      "message": "Complete",
+      "duration_seconds": 46.099,
+      "pages": 89,
+      "accepted_claims": 1482,
+      "quarantined_claims": 6,
+      "visual_review_pages": 0,
+      "extraction_batches": 0
+    },
+    {
+      "document_id": "rbi-report",
+      "sha256": "73209a2caa2f5671f2feae065d01602302daaaac9e8230c9c471d99243fd079e",
+      "status": "complete",
+      "message": "Complete",
+      "duration_seconds": 312.606,
+      "pages": 100,
+      "accepted_claims": 5292,
+      "quarantined_claims": 0,
+      "visual_review_pages": 0,
+      "extraction_batches": 0
+    },
+    {
+      "document_id": "imf-report",
+      "sha256": "f6d3cfecafd9548920349b29b1137d645c20073434d0ac66485ead9738a0ea4d",
+      "status": "complete",
+      "message": "Complete",
+      "duration_seconds": 154.905,
+      "pages": 95,
+      "accepted_claims": 1569,
+      "quarantined_claims": 5,
+      "visual_review_pages": 1,
+      "extraction_batches": 0
+    }
+  ],
+  "expected_claims": {
+    "exact_matches": 0,
+    "total": 10,
+    "recall": 0.0,
+    "items": [
+      {
+        "expected_id": "clm-delhivery-revenue-annual",
+        "document_id": "delhivery-annual",
+        "pdf_page": 85,
+        "exact_match": false,
+        "value_and_page_match": false,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-delhivery-revenue-presentation",
+        "document_id": "delhivery-presentation",
+        "pdf_page": 6,
+        "exact_match": false,
+        "value_and_page_match": false,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-delhivery-service-fy23",
+        "document_id": "delhivery-annual",
+        "pdf_page": 85,
+        "exact_match": false,
+        "value_and_page_match": false,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-delhivery-customer-fy23",
+        "document_id": "delhivery-annual",
+        "pdf_page": 85,
+        "exact_match": false,
+        "value_and_page_match": false,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-suvir-prospectus",
+        "document_id": "delhivery-prospectus",
+        "pdf_page": 88,
+        "exact_match": false,
+        "value_and_page_match": false,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-suvir-resignation",
+        "document_id": "delhivery-annual",
+        "pdf_page": 24,
+        "exact_match": false,
+        "value_and_page_match": false,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-survey-gdp-fy25",
+        "document_id": "economic-survey",
+        "pdf_page": 4,
+        "exact_match": false,
+        "value_and_page_match": true,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-rbi-gdp-fy25",
+        "document_id": "rbi-report",
+        "pdf_page": 8,
+        "exact_match": false,
+        "value_and_page_match": true,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-rbi-gdp-fy26",
+        "document_id": "rbi-report",
+        "pdf_page": 17,
+        "exact_match": false,
+        "value_and_page_match": true,
+        "matched_claim_id": null
+      },
+      {
+        "expected_id": "clm-imf-gdp-fy26",
+        "document_id": "imf-report",
+        "pdf_page": 3,
+        "exact_match": false,
+        "value_and_page_match": true,
+        "matched_claim_id": null
+      }
+    ]
+  },
+  "expected_relationships": {
+    "matches": 0,
+    "total": 4,
+    "accuracy": 0.0,
+    "items": [
+      {
+        "expected_id": "rel-revenue-corroborates",
+        "expected_type": "CORROBORATES",
+        "actual_type": null,
+        "match": false
+      },
+      {
+        "expected_id": "rel-director-supersedes",
+        "expected_type": "SUPERSEDES",
+        "actual_type": null,
+        "match": false
+      },
+      {
+        "expected_id": "rel-gdp-vintage",
+        "expected_type": "RECONCILES",
+        "actual_type": null,
+        "match": false
+      },
+      {
+        "expected_id": "rel-gdp-forecast",
+        "expected_type": "CONTRADICTS",
+        "actual_type": null,
+        "match": false
+      }
+    ]
+  },
+  "limitations": [
+    "No extraction, reasoning, vision, or embedding provider was configured.",
+    "Offline deterministic hints are intentionally not a substitute for open-schema semantic extraction."
+  ]
+}

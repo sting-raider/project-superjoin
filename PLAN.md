@@ -104,6 +104,16 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   A provider-backed run, independently verified gold annotations, and a demo
   snapshot generated from actual production extraction remain required.
 
+- After the generic evidence-grounding, resumable batch, and open-vocabulary
+  hint corrections, the same six PDFs were processed again at commit
+  `e16b47c`. The run covered 511 pages in 998.379 seconds, published 14,607
+  accepted claims and 7,843 active fact families, and recorded 55,751
+  relationships. It still recovered 0/10 exact diagnostic claims and 0/4
+  diagnostic relationships without configured providers; four macro values
+  matched value and page only. This is a measured offline limitation, not a
+  reason to add starter-specific rules. The report is
+  `evals/reports/starter-corpus-e2e-generalized.json`.
+
 - The first locally available parser smoke run (the two-page assignment PDF,
   not the six-document starter corpus) found equivalent native character counts
   for pdfplumber and PyMuPDF. PyMuPDF was substantially faster in that smoke

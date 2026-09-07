@@ -9,6 +9,17 @@ demo case reference were **0/10 claims and 0/4 relationships**. This is a failed
 case-recovery baseline, not a claim-quality result. The diagnostic reference
 is not independently annotated gold, and provider roles were all unavailable.
 
+After the generic evidence-grounding, resumable batch, and open-vocabulary
+hint corrections, the same archive was rerun at `e16b47c` and is recorded in
+`evals/reports/starter-corpus-e2e-generalized.json`: 511 pages in 998.379
+seconds, 14,607 accepted claims, 20 quarantined claims, 7,843 active fact
+families, and 55,751 relationships. The offline run still recovered **0/10
+exact claim cases and 0/4 relationships**; four GDP cases matched value and
+page only. That result is retained as an honest no-provider limitation rather
+than being tuned with starter-specific rules. The parser preflight produced
+14,627 open-vocabulary numeric hints, and visual review remained recorded for
+six pages.
+
 Reproduce with `python scripts/evaluate_starter_corpus.py --database data/new-corpus-eval.sqlite3`
 after preparing the local archive. The runner refuses to overwrite an existing
 database. PDFs, page text, and the evaluation database remain local under
