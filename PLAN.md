@@ -152,13 +152,19 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   `evals/reports/gold-offline-generalization.json`; it is a development
   capability measurement, not a live-model or starter-corpus gold claim.
 - A clean Docker build from the current `main` tree completed successfully on
-  2026-09-07. The container reported healthy on `127.0.0.1:8080`, served the
+  2026-09-08 at commit `5201d59`. The container reported healthy on
+  `127.0.0.1:8080`, served the
   Project SuperJoin UI, returned all four required cases, blocked the strict
   FY26 forecast query, and exposed lexical search with no provider key. A real
   two-page assignment PDF then completed the upload pipeline with parser
   quality/page artifacts; uploading the same bytes again returned a true
   deduplicated no-op. The failed upload exposed and fixed a document quality
   column mismatch before this result was recorded.
+- The same `5201d59` tree passes the complete offline pytest suite, Ruff,
+  Python compilation, and the Vite production build. A rebuilt Compose
+  container is healthy in Demo Mode; `/api/v1/settings` exposes independent
+  role capability flags and retry policy without secrets, and recorded replay
+  completes with zero model calls.
 - The downstream read surface now includes workspace/document/page/claim
   detail, fact history, and JSON/CSV/XLSX fact exports. Formula-like source
   strings are neutralized in tabular exports while normalized decimal strings
