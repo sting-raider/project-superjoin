@@ -29,6 +29,7 @@ latency, dimensionality, and cost. The runtime still works in recorded demo
 mode through deterministic extraction and lexical retrieval. Any model string
 accepted by the configured endpoint is valid; compatibility failures are
 recorded as provider errors rather than converted into a hidden fallback.
-Transient 429/5xx responses use bounded, configurable exponential backoff and
-honor a provider `Retry-After` value; retries remain inside the same explicit
-budgeted request and never switch providers implicitly.
+Transient 429/5xx and connection/timeout failures use bounded, configurable
+exponential backoff and honor a provider `Retry-After` value; retries remain
+inside the same explicit budgeted request and never switch providers
+implicitly.

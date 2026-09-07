@@ -50,9 +50,10 @@ implement response-format hints, and set `EMBEDDING_INCLUDE_DIMENSIONS=false`
 when an embedding service chooses dimensions server-side. Provider errors,
 missing models, unsupported response formats, and vector dimension mismatches
 remain visible in run telemetry and search responses.
-Transient HTTP 429/5xx responses use the configured `AI_RETRY_ATTEMPTS` and
-`AI_RETRY_BACKOFF_SECONDS` policy (including `Retry-After` when supplied); the
-final provider error is retained when retries are exhausted. The budget ledger
+Transient HTTP 429/5xx and connection/timeout failures use the configured
+`AI_RETRY_ATTEMPTS` and `AI_RETRY_BACKOFF_SECONDS` policy (including
+`Retry-After` when supplied); the final provider error is retained when retries
+are exhausted. The budget ledger
 reserves the configured retry envelope and records the attempts actually used,
 so retries cannot silently exceed the cumulative cap. Cache fingerprints also
 include the nonsecret endpoint/path/model identity, so changing providers does

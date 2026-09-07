@@ -212,8 +212,9 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   configuration values with blank defaults. A fake regression covers an
   arbitrary local model without a key and an Azure-style deployment path with
   `api-key` auth; no Gemini-specific runtime branch or model allowlist exists.
-  Transient 429/5xx responses use configurable bounded backoff and honor
-  `Retry-After`, with the final provider error preserved after exhaustion.
+  Transient 429/5xx and connection/timeout failures use configurable bounded
+  backoff and honor `Retry-After`, with the final provider error preserved after
+  exhaustion.
   Retry attempts are persisted alongside model-call telemetry; reservations
   cover the configured retry envelope and successful settlement charges the
   attempts actually consumed, keeping the cumulative budget conservative.
