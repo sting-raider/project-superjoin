@@ -128,3 +128,12 @@ def test_document_archive_and_reactivate_are_auditable() -> None:
         assert allowed["decision"] == "allow"
         changes = client.get("/api/v1/changes", params={"workspace_id": "delhivery"}).json()["items"]
         assert any(change["kind"] == "document_archived" for change in changes)
+
+
+def test_workspace_create_slugifies_and_rejects_duplicate() -> None:
+    with TestClient(app) as client:
+        created = client.post("/api/v1/workspaces", json={"name": "New Advisory Corpus", "description": "test"})
+        assert created.status_code == 201
+        assert created.json()["id"] == "new-advisory-corpus"
+        duplicate = client.post("/api/v1/workspaces", json={"name": "New Advisory Corpus"})
+        assert duplicate.status_code == 409

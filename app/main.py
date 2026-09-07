@@ -48,6 +48,24 @@ def workspaces() -> dict[str, Any]:
     return {"items": rows_to_dicts(rows)}
 
 
+@app.post("/api/v1/workspaces", status_code=201)
+def create_workspace(payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "name is required")
+    requested_id = str(payload.get("id") or "").strip().lower()
+    workspace_id = re.sub(r"[^a-z0-9]+", "-", requested_id or name.casefold()).strip("-")[:48]
+    if not workspace_id:
+        raise HTTPException(400, "name must contain a usable workspace identifier")
+    description = str(payload.get("description") or "").strip()
+    with db() as conn:
+        if conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone():
+            raise HTTPException(409, "Workspace id already exists")
+        conn.execute("INSERT INTO workspaces(id,name,description,created_at) VALUES(?,?,?,?)", (workspace_id, name, description, utc_now()))
+        row = conn.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+    return row_to_dict(row) or {"id": workspace_id, "name": name}
+
+
 @app.get("/api/v1/workspaces/{workspace_id}")
 def workspace_detail(workspace_id: str) -> dict[str, Any]:
     return overview(workspace_id)
@@ -120,11 +138,17 @@ def reactivate_document(document_id: str) -> dict[str, Any]:
 async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), workspace_id: str = Form("delhivery")) -> dict[str, Any]:  # noqa: B008
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Upload a PDF file")
-    data = await file.read()
+    max_bytes = settings.max_pdf_mb * 1024 * 1024
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(413, f"PDF exceeds the {settings.max_pdf_mb} MB limit")
+        chunks.append(chunk)
+    data = b"".join(chunks)
     if not data.startswith(b"%PDF-"):
         raise HTTPException(400, "The uploaded file is not a PDF")
-    if len(data) > settings.max_pdf_mb * 1024 * 1024:
-        raise HTTPException(413, f"PDF exceeds the {settings.max_pdf_mb} MB limit")
     digest = hashlib.sha256(data).hexdigest()
     settings.ensure_dirs()
     with db() as conn:

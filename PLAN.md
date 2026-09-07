@@ -165,6 +165,11 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   `UNCERTAIN` result maps to an unresolved fact and therefore blocks strict
   Trust Gate use. A fake-provider SQLite regression covers the lane and caught
   a nested-write lock before publication.
+- The API now supports workspace creation with deterministic slug IDs and
+  duplicate protection. PDF upload reads are chunked at the configured size
+  limit, so an oversized request is rejected before it is retained or parsed;
+  the existing content-signature and workspace-scoped deduplication checks
+  remain in place. The API suite covers workspace creation and conflict.
 
 ### Resolved implementation simplifications
 
