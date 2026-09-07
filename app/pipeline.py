@@ -320,18 +320,25 @@ def _model_claim_grounded(item: dict[str, Any], candidates: list[dict[str, Any]]
 
     evidence = item.get("evidence") or {}
     evidence_text = " ".join(str(evidence.get("text") or "").split()).casefold()
-    raw_value = " ".join(str(item.get("raw_value") or "").split()).casefold()
     if not evidence_text:
         return False
-    source_texts = [str((candidate.get("evidence") or {}).get("text") or "") for candidate in candidates]
-    source_texts.extend(str(page.get("text") or "") for page in source_pages or [])
-    for source_value in source_texts:
-        source_text = " ".join(source_value.split()).casefold()
-        if source_text and (evidence_text in source_text or source_text in evidence_text):
-            return True
-        if raw_value and source_text and raw_value in source_text:
-            return True
-    return False
+    # Page text is authoritative when supplied. A hint cannot bypass a page
+    # mismatch, nor can a coincidentally shared scalar ground a quotation.
+    sources = source_pages or [candidate.get("evidence") or {} for candidate in candidates]
+    matching = [
+        source for source in sources
+        if evidence_text in " ".join(str(source.get("text") or "").split()).casefold()
+    ]
+    cited_page = evidence.get("pdf_page")
+    if cited_page is not None:
+        return any(str(source.get("pdf_page")) == str(cited_page) for source in matching)
+    pages = {source.get("pdf_page") for source in matching}
+    if len(pages) != 1:
+        return False
+    page = next(iter(pages))
+    if page is not None:
+        evidence["pdf_page"] = page
+    return bool(matching)
 
 
 def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_id: str) -> list[dict[str, Any]]:
