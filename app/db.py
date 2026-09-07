@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS model_calls (
   output_tokens INTEGER,
   estimated_cost REAL NOT NULL DEFAULT 0,
   latency_ms INTEGER,
+  attempts INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_model_calls_fingerprint ON model_calls(role, model, input_hash, status);
@@ -422,6 +423,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
         "model_calls": {
             "reserved_usd": "REAL NOT NULL DEFAULT 0",
             "cache_hit": "INTEGER NOT NULL DEFAULT 0",
+            "attempts": "INTEGER NOT NULL DEFAULT 1",
         },
         "claims": {"precision": "INTEGER"},
         "claim_interpretations": {

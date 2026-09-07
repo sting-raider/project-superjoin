@@ -167,6 +167,7 @@ def test_transient_provider_failure_uses_retry_after_without_silent_fallback(mon
     monkeypatch.setattr(providers.time, "sleep", lambda delay: sleeps.append(delay))
     result = providers.structured_chat("extraction", "system", "user")
     assert result.data == {"claims": []}
+    assert result.attempts == 2
     assert calls == [90, 90]
     assert len(sleeps) == 1
     assert 0.0 <= sleeps[0] <= 0.25

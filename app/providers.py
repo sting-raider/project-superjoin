@@ -23,6 +23,7 @@ class ProviderResult:
     latency_ms: int = 0
     cached: bool = False
     endpoint: str | None = None
+    attempts: int = 1
 
 
 class ProviderError(RuntimeError):
@@ -146,7 +147,9 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
     started = time.perf_counter()
     attempts = max(1, int(getattr(settings, "provider_retry_attempts", 1)))
     raw = None
+    attempts_used = 0
     for attempt in range(attempts):
+        attempts_used = attempt + 1
         try:
             with urllib.request.urlopen(request, timeout=int(config["timeout"])) as response:
                 raw = json.loads(response.read().decode("utf-8"))
@@ -202,6 +205,7 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
         estimated_cost=round(estimated_cost, 6),
         latency_ms=elapsed,
         endpoint=url,
+        attempts=attempts_used,
     )
 
 

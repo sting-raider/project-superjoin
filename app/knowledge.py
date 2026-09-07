@@ -135,7 +135,7 @@ def _semantic_relationship(a: Any, b: Any, run_id: str | None) -> tuple[str, str
             settle(reservation, 0.0, status="failed")
         return None
     if reservation:
-        settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
+        settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
     with db() as conn:
         conn.execute("INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)", (f"cache-{uuid.uuid4().hex[:12]}", "reasoning", result.model, digest, json.dumps(result.data, ensure_ascii=False), result.estimated_cost, utc_now()))
     return _validated_semantic_result(result.data, a["id"], b["id"])

@@ -41,7 +41,7 @@ def reserve(run_id: str | None, role: str, model: str, input_hash: str, amount: 
     return Reservation(reservation_id, amount)
 
 
-def settle(reservation: Reservation, actual_cost: float, *, status: str = "complete", input_tokens: int | None = None, output_tokens: int | None = None, latency_ms: int | None = None, cache_hit: bool = False) -> None:
+def settle(reservation: Reservation, actual_cost: float, *, status: str = "complete", input_tokens: int | None = None, output_tokens: int | None = None, latency_ms: int | None = None, cache_hit: bool = False, attempts: int = 1) -> None:
     actual_cost = max(0.0, float(actual_cost))
     with db() as conn:
         row = conn.execute("SELECT reserved_usd,status FROM model_calls WHERE id=?", (reservation.id,)).fetchone()
@@ -57,7 +57,7 @@ def settle(reservation: Reservation, actual_cost: float, *, status: str = "compl
         accounted_cost = min(actual_cost, spendable)
         final_status = "budget_capped" if actual_cost > accounted_cost + 1e-9 and status == "complete" else status
         conn.execute("UPDATE budget_ledger SET reserved_usd=MAX(0,reserved_usd-?),spent_usd=spent_usd+?,updated_at=? WHERE id=1", (reserved, accounted_cost, utc_now()))
-        conn.execute("UPDATE model_calls SET status=?,reserved_usd=0,estimated_cost=?,input_tokens=?,output_tokens=?,latency_ms=?,cache_hit=? WHERE id=?", (final_status, accounted_cost, input_tokens, output_tokens, latency_ms, int(cache_hit), reservation.id))
+        conn.execute("UPDATE model_calls SET status=?,reserved_usd=0,estimated_cost=?,input_tokens=?,output_tokens=?,latency_ms=?,cache_hit=?,attempts=? WHERE id=?", (final_status, accounted_cost, input_tokens, output_tokens, latency_ms, int(cache_hit), max(1, int(attempts)), reservation.id))
 
 
 def snapshot() -> dict[str, Any]:

@@ -126,7 +126,7 @@ def embed_claim(claim_id: str, space_id: str) -> dict[str, Any]:
             settle(reservation, 0.0, status="failed", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
         raise ValueError(f"embedding dimension mismatch: expected {space['dimensions']}, got {len(vector)}")
     if reservation:
-        settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
+        settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
     norm = math.sqrt(sum(value * value for value in vector)) or 1.0
     vector = [float(value / norm) for value in vector]
     with db() as conn:
@@ -163,7 +163,7 @@ def embed_query(workspace_id: str, query: str, space_id: str | None = None) -> l
             settle(reservation, 0.0, status="failed")
         raise
     if reservation:
-        settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
+        settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
     norm = math.sqrt(sum(value * value for value in vector)) or 1.0
     vector = [float(value / norm) for value in vector]
     with db() as conn:

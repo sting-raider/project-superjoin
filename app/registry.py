@@ -412,6 +412,7 @@ def _registry_embedding(text: str, run_id: str | None) -> list[float]:
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         latency_ms=result.latency_ms,
+        attempts=result.attempts,
     )
     with db() as conn:
         conn.execute(
@@ -485,6 +486,7 @@ def _semantic_resolution(
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         latency_ms=result.latency_ms,
+        attempts=result.attempts,
     )
     with db() as conn:
         conn.execute(

@@ -304,7 +304,7 @@ def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str 
             _record_model_call(run_id, "extraction", chosen_model, digest, "offline", 0.0, str(exc))
         return candidates
     if reservation:
-        settle(reservation, result.estimated_cost, status="complete", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
+        settle(reservation, result.estimated_cost, status="complete", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
     with db() as conn:
         conn.execute("INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)", (_id("cache"), "extraction", result.model, digest, json.dumps(result.data, ensure_ascii=False), result.estimated_cost, utc_now()))
     data = result.data
@@ -359,7 +359,7 @@ def _repair_model_extract(compact: str, filename: str, run_id: str, model: str, 
             _record_model_call(run_id, "extraction", model, digest, "repair_failed", 0.0, str(exc))
         return None
     if reservation:
-        settle(reservation, result.estimated_cost, status="complete", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
+        settle(reservation, result.estimated_cost, status="complete", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
     with db() as conn:
         conn.execute("INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)", (_id("cache"), "extraction", result.model, digest, json.dumps(result.data, ensure_ascii=False), result.estimated_cost, utc_now()))
     return result.data
@@ -438,7 +438,7 @@ def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_i
         _update_run(run_id, 45, f"Page {page_index + 1} visual fallback unavailable: {exc}")
         return []
     if reservation:
-        settle(reservation, result.estimated_cost, status="complete", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
+        settle(reservation, result.estimated_cost, status="complete", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
     with db() as conn:
         conn.execute("INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)", (_id("cache"), "vision", model, digest, json.dumps(result.data, ensure_ascii=False), result.estimated_cost, utc_now()))
     return _visual_claims(result.data, page_index)
