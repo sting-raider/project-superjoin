@@ -10,6 +10,21 @@ def _env(name: str, default: str = "") -> str:
     return (value if value else default).strip().rstrip("/")
 
 
+def _int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    try:
+        return int(raw) if raw not in (None, "") else default
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw in (None, ""):
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     app_env: str = os.getenv("APP_ENV", "demo")
@@ -26,25 +41,48 @@ class Settings:
     vision_api_key: str = _env("VISION_API_KEY", _env("AI_API_KEY"))
     embedding_base_url: str = _env("EMBEDDING_BASE_URL", _env("AI_BASE_URL"))
     embedding_api_key: str = _env("EMBEDDING_API_KEY", _env("AI_API_KEY"))
-    extraction_model: str = os.getenv("EXTRACTION_MODEL", "gemini-3.5-flash-lite")
-    reasoning_model: str = os.getenv("REASONING_MODEL", "gemini-3.8-flash")
-    vision_model: str = os.getenv("VISION_MODEL", "gemini-3.8-flash")
-    embedding_model: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
-    embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
-    ai_timeout_seconds: int = int(os.getenv("AI_TIMEOUT_SECONDS", "90"))
-    extraction_max_output_tokens: int = int(os.getenv("EXTRACTION_MAX_OUTPUT_TOKENS", "1200"))
-    reasoning_max_output_tokens: int = int(os.getenv("REASONING_MAX_OUTPUT_TOKENS", "1200"))
-    vision_max_output_tokens: int = int(os.getenv("VISION_MAX_OUTPUT_TOKENS", "1200"))
-    extraction_concurrency: int = int(os.getenv("EXTRACTION_CONCURRENCY", "2"))
-    extraction_batch_pages: int = int(os.getenv("EXTRACTION_BATCH_PAGES", "6"))
-    extraction_batch_chars: int = int(os.getenv("EXTRACTION_BATCH_CHARS", "24000"))
-    reasoning_concurrency: int = int(os.getenv("REASONING_CONCURRENCY", "2"))
-    vision_concurrency: int = int(os.getenv("VISION_CONCURRENCY", "2"))
-    embedding_concurrency: int = int(os.getenv("EMBEDDING_CONCURRENCY", "2"))
-    extraction_structured_output_mode: str = os.getenv("EXTRACTION_STRUCTURED_OUTPUT_MODE", "json_object")
-    reasoning_structured_output_mode: str = os.getenv("REASONING_STRUCTURED_OUTPUT_MODE", "json_object")
-    vision_structured_output_mode: str = os.getenv("VISION_STRUCTURED_OUTPUT_MODE", "json_object")
-    embedding_task_type: str = os.getenv("EMBEDDING_TASK_TYPE", "retrieval_document")
+    # Model names are deliberately unset by default. Every deployment chooses
+    # its own model identifier, including local Ollama/vLLM models.
+    extraction_model: str = _env("EXTRACTION_MODEL")
+    reasoning_model: str = _env("REASONING_MODEL")
+    vision_model: str = _env("VISION_MODEL")
+    embedding_model: str = _env("EMBEDDING_MODEL")
+    embedding_dimensions: int = _int_env("EMBEDDING_DIMENSIONS", 768)
+    embedding_include_dimensions: bool = _bool_env("EMBEDDING_INCLUDE_DIMENSIONS", True)
+    ai_timeout_seconds: int = _int_env("AI_TIMEOUT_SECONDS", 90)
+    extraction_timeout_seconds: int = _int_env("EXTRACTION_TIMEOUT_SECONDS", ai_timeout_seconds)
+    reasoning_timeout_seconds: int = _int_env("REASONING_TIMEOUT_SECONDS", ai_timeout_seconds)
+    vision_timeout_seconds: int = _int_env("VISION_TIMEOUT_SECONDS", ai_timeout_seconds)
+    embedding_timeout_seconds: int = _int_env("EMBEDDING_TIMEOUT_SECONDS", ai_timeout_seconds)
+    extraction_max_output_tokens: int = _int_env("EXTRACTION_MAX_OUTPUT_TOKENS", 1200)
+    reasoning_max_output_tokens: int = _int_env("REASONING_MAX_OUTPUT_TOKENS", 1200)
+    vision_max_output_tokens: int = _int_env("VISION_MAX_OUTPUT_TOKENS", 1200)
+    extraction_concurrency: int = _int_env("EXTRACTION_CONCURRENCY", 2)
+    extraction_batch_pages: int = _int_env("EXTRACTION_BATCH_PAGES", 6)
+    extraction_batch_chars: int = _int_env("EXTRACTION_BATCH_CHARS", 24000)
+    reasoning_concurrency: int = _int_env("REASONING_CONCURRENCY", 2)
+    vision_concurrency: int = _int_env("VISION_CONCURRENCY", 2)
+    embedding_concurrency: int = _int_env("EMBEDDING_CONCURRENCY", 2)
+    extraction_structured_output_mode: str = _env("EXTRACTION_STRUCTURED_OUTPUT_MODE", "json_object")
+    reasoning_structured_output_mode: str = _env("REASONING_STRUCTURED_OUTPUT_MODE", "json_object")
+    vision_structured_output_mode: str = _env("VISION_STRUCTURED_OUTPUT_MODE", "json_object")
+    embedding_task_type: str = _env("EMBEDDING_TASK_TYPE", "retrieval_document")
+    extraction_chat_path: str = _env("EXTRACTION_CHAT_PATH", "/chat/completions")
+    reasoning_chat_path: str = _env("REASONING_CHAT_PATH", "/chat/completions")
+    vision_chat_path: str = _env("VISION_CHAT_PATH", "/chat/completions")
+    embedding_path: str = _env("EMBEDDING_PATH", "/embeddings")
+    extraction_auth_header: str = _env("EXTRACTION_AUTH_HEADER", "Authorization")
+    reasoning_auth_header: str = _env("REASONING_AUTH_HEADER", "Authorization")
+    vision_auth_header: str = _env("VISION_AUTH_HEADER", "Authorization")
+    embedding_auth_header: str = _env("EMBEDDING_AUTH_HEADER", "Authorization")
+    extraction_auth_scheme: str = _env("EXTRACTION_AUTH_SCHEME", "Bearer")
+    reasoning_auth_scheme: str = _env("REASONING_AUTH_SCHEME", "Bearer")
+    vision_auth_scheme: str = _env("VISION_AUTH_SCHEME", "Bearer")
+    embedding_auth_scheme: str = _env("EMBEDDING_AUTH_SCHEME", "Bearer")
+    extraction_send_model: bool = _bool_env("EXTRACTION_SEND_MODEL", True)
+    reasoning_send_model: bool = _bool_env("REASONING_SEND_MODEL", True)
+    vision_send_model: bool = _bool_env("VISION_SEND_MODEL", True)
+    embedding_send_model: bool = _bool_env("EMBEDDING_SEND_MODEL", True)
     ai_budget_usd: float = float(os.getenv("AI_BUDGET_USD", "20"))
     ai_input_price_per_million: float = float(os.getenv("AI_INPUT_PRICE_PER_MILLION", "0.35"))
     ai_output_price_per_million: float = float(os.getenv("AI_OUTPUT_PRICE_PER_MILLION", "0.53"))

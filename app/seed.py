@@ -242,6 +242,14 @@ def _seed_recorded_reasoning_outputs(workspace_id: str) -> None:
                 "confidence": relationship["confidence"],
                 "evidence_claim_ids": [left["id"], right["id"]],
             }
+            # A persistent demo volume may contain a recording written with a
+            # previous model name. Remove both stable-ID and old fingerprint
+            # rows before refreshing the provider-neutral replay entry.
+            digest = relationship_cache_fingerprint(left, right)
+            conn.execute(
+                "DELETE FROM model_cache WHERE id=? OR (role=? AND model=? AND input_hash=?)",
+                (f"demo-reasoning-{relationship['id']}", "reasoning", settings.reasoning_model, digest),
+            )
             conn.execute(
                 """INSERT INTO model_cache
                 (id,role,model,input_hash,response_json,estimated_cost,created_at)
@@ -253,7 +261,7 @@ def _seed_recorded_reasoning_outputs(workspace_id: str) -> None:
                     f"demo-reasoning-{relationship['id']}",
                     "reasoning",
                     settings.reasoning_model,
-                    relationship_cache_fingerprint(left, right),
+                        digest,
                     json.dumps(response, ensure_ascii=False),
                     0.0,
                     utc_now(),

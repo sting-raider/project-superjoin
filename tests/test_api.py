@@ -122,7 +122,9 @@ def test_settings_exposes_nonsecret_independent_role_contract() -> None:
         assert response.status_code == 200
         payload = response.json()
         assert payload["project"] == "Project SuperJoin"
-        assert payload["roles"]["extraction"]["model"]
+        assert "model" in payload["roles"]["extraction"]
+        assert "base_url" in payload["roles"]["extraction"]
+        assert payload["roles"]["extraction"]["key_configured"] is False
         assert payload["roles"]["embeddings"]["dimensions"] == 768
         assert payload["roles"]["vision"]["structured_output_mode"] == "json_object"
         assert payload["configured_roles"] == {"extraction": False, "reasoning": False, "vision": False, "embeddings": False}
