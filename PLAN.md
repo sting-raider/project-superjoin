@@ -98,6 +98,18 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   provider endpoint/key is configured; no live model quality or cost result is
   being claimed. The candidates and exact comparison contract remain recorded
   in `docs/MODEL_SELECTION.md` and the two reports under `evals/reports/`.
+- A clean Docker build from the current `main` tree completed successfully on
+  2026-09-07. The container reported healthy on `127.0.0.1:8080`, served the
+  Project SuperJoin UI, returned all four required cases, blocked the strict
+  FY26 forecast query, and exposed lexical search with no provider key. A real
+  two-page assignment PDF then completed the upload pipeline with parser
+  quality/page artifacts; uploading the same bytes again returned a true
+  deduplicated no-op. The failed upload exposed and fixed a document quality
+  column mismatch before this result was recorded.
+- The downstream read surface now includes workspace/document/page/claim
+  detail, fact history, and JSON/CSV/XLSX fact exports. Formula-like source
+  strings are neutralized in tabular exports while normalized decimal strings
+  remain machine-readable.
 
 ## 3. Architecture and technology choices
 
