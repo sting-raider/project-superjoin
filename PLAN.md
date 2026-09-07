@@ -139,10 +139,15 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   anchors, and visual-review dispositions so the full corpus comparison can be
   run without changing the claim contract.
 - The extraction and embedding benchmark harnesses have been run in their
-  credential-free path. Both reports explicitly say `skipped` because no
-  provider endpoint/key is configured; no live model quality or cost result is
-  being claimed. The candidates and exact comparison contract remain recorded
-  in `docs/MODEL_SELECTION.md` and the two reports under `evals/reports/`.
+  credential-free path. Their reports explicitly say `skipped` when the role
+  has no configured endpoint/model; no comparative model-quality result is
+  inferred from that path. A separate one-case live compatibility benchmark
+  now records a valid structured response from the configured NVIDIA NIM
+  extraction endpoint, including nonsecret endpoint, model, latency, attempts,
+  and cost metadata. It demonstrates transport compatibility only; it does not
+  select a reference model. See `docs/MODEL_SELECTION.md`,
+  `evals/reports/extraction-model-benchmark-nim.json`, and the two role
+  benchmark reports under `evals/reports/`.
 - A live NVIDIA NIM extraction run at commit `3d0826b` covered all six starter
   PDFs (511 pages) through the generic bounded pipeline. It published 9,362
   accepted and 14 quarantined claims from 193 extraction calls, with 174
@@ -1496,7 +1501,7 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] Human decisions are immutable/auditable, revocable, and invalidated appropriately by new evidence.
 - [x] Duplicate ingestion makes no paid calls; incremental ingestion preserves previous work.
 - [x] Crash/resume, cancellation, and transactional publication pass.
-- [x] Gold evaluation and mandatory performance reports contain measured results and limitations; live provider-quality comparisons remain explicitly skipped until credentials are supplied.
+- [x] Gold evaluation and mandatory performance reports contain measured results and limitations; comparative provider-quality selection remains explicitly pending, while the recorded NIM smoke is labeled compatibility evidence only.
 - [x] Any unrun 1,000-page/50,000-claim benchmarks are labeled accurately and do not block the finished core submission.
 - [x] Cumulative paid API usage remains within US$20.
 - [x] Relevant tests, type checks, accessibility checks, and clean-build checks pass.
