@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -196,8 +197,8 @@ def facts(workspace_id: str = "delhivery", q: str = "", status: str | None = Non
         params: list[Any] = [workspace_id]
         clauses = ["workspace_id=?"]
         if q:
-            query = "*" + q.replace("*", "") + "*"
-            rows = conn.execute("SELECT claim_id FROM claims_fts WHERE workspace_id=? AND claims_fts MATCH ? LIMIT ?", (workspace_id, query, limit)).fetchall()
+            query = " ".join(re.findall(r"[A-Za-z0-9_]+", q))
+            rows = conn.execute("SELECT claim_id FROM claims_fts WHERE workspace_id=? AND claims_fts MATCH ? LIMIT ?", (workspace_id, query, limit)).fetchall() if query else []
             claim_ids = [row["claim_id"] for row in rows]
             if claim_ids:
                 clauses.append("(subject LIKE ? OR predicate LIKE ? OR display_value LIKE ? OR id IN (SELECT 'fact-claim-' || id FROM claims WHERE id IN (" + ",".join("?" for _ in claim_ids) + ")))" )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import uuid
 from typing import Any
 
@@ -16,7 +17,7 @@ from .providers import ProviderError, available, embed
 def lexical_claims(workspace_id: str, query: str, limit: int = 30) -> list[dict[str, Any]]:
     if not query.strip():
         return []
-    safe = " ".join(token for token in query.replace('"', "").split() if token not in {"OR", "AND", "NOT"})
+    safe = " ".join(token for token in re.findall(r"[A-Za-z0-9_]+", query) if token.upper() not in {"OR", "AND", "NOT"})
     if not safe:
         return []
     with db() as conn:
