@@ -4,6 +4,7 @@ from pathlib import Path
 from app.config import settings
 from app.db import db, init_db, utc_now
 from app.knowledge import assess_relationships, compare_claim_pair, rebuild_workspace, resolve_fact
+from app.providers import ProviderResult
 
 
 def _claim(**overrides):
@@ -116,6 +117,39 @@ def test_known_at_revision_returns_historical_fact_version(tmp_path: Path) -> No
         assert historical["value"] == "0.064"
         assert current["fact_version_id"] == "f-v2"
         assert current["value"] == "0.065"
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_reasoning_role_can_resolve_deterministic_context_abstention(monkeypatch, tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "reasoning.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    calls = []
+    try:
+        init_db()
+        now = utc_now()
+        evidence = json.dumps({"text": "The FY25 first advance estimate is 6.4%."})
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "source.pdf", "hash", "complete", now))
+            for claim_id, period, value in (("c1", "FY25", "0.064"), ("c2", "FY26", "0.065")):
+                conn.execute("INSERT INTO claims(id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,extraction_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (claim_id, "w", "d", "India", "real_gdp_growth", value, value, "percentage", "%", period, "estimate", "India", evidence, "accepted", now))
+        monkeypatch.setattr("app.knowledge.available", lambda role=None: role == "reasoning")
+
+        def fake_chat(role, system, user, model=None, max_output_tokens=1200):
+            calls.append((role, user))
+            return ProviderResult(data={"relationship_type": "RECONCILES", "reason": "The claims refer to adjacent fiscal periods and should remain contextual.", "dimensions": {"period": "DIFFERENT"}, "confidence": 0.8, "evidence_claim_ids": ["c1", "c2"]}, model=model or "fake", estimated_cost=0.001)
+
+        monkeypatch.setattr("app.knowledge.structured_chat", fake_chat)
+        inserted = assess_relationships("w")
+        with db() as conn:
+            relationship = conn.execute("SELECT relationship_type,reason FROM relationships WHERE workspace_id='w'").fetchone()
+        assert inserted == 1
+        assert relationship["relationship_type"] == "RECONCILES"
+        assert len(calls) == 1
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)

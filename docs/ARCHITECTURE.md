@@ -21,6 +21,8 @@ flowchart LR
     C --> N[Normalization and registry resolution]
     N --> R[Exact / FTS5 / optional vector retrieval]
     R --> A[Deterministic relationship assessment]
+    A -->|ambiguous only| S[Optional grounded reasoning role]
+    S --> A
     A --> F[Versioned fact families]
     F --> K[Knowledge Diff and review records]
     F --> T[Trust Gate]

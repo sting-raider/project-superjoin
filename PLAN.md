@@ -157,6 +157,14 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   Knowledge Diff item; reactivation recomputes active relationships and
   grouped fact memberships. API coverage verifies Trust Gate blocking during
   archive and restoration after reactivation.
+- Ambiguous same-subject/predicate comparisons can now use the independently
+  configured reasoning role after deterministic abstention. The request is
+  source-delimited, claim-ID bound, allowlisted to five relationship outcomes,
+  budgeted/cached, and published in a short transaction outside the model
+  call. Invalid or unavailable reasoning leaves the pair unrelated; an
+  `UNCERTAIN` result maps to an unresolved fact and therefore blocks strict
+  Trust Gate use. A fake-provider SQLite regression covers the lane and caught
+  a nested-write lock before publication.
 
 ### Resolved implementation simplifications
 
