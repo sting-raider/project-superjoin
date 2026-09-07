@@ -159,6 +159,10 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   predicate by name. It chooses the first available workspace and derives the
   Trust Gate example from that workspace's first fact; the leakage scan covers
   the frontend source as well as backend production modules.
+- A subprocess regression copies the production package with `demo_data.py`
+  and `seed.py` removed, disables Demo Mode, imports the FastAPI app, and
+  initializes SQLite successfully. This exercises the anti-leakage invariant
+  beyond a source-text scan.
 - Reported decimal precision is now persisted on extracted claims and used by
   deterministic relationship comparison. A live SQLite regression covers the
   crore/million rounding case, aggregates both evidence records through the
