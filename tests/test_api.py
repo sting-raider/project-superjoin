@@ -142,6 +142,9 @@ def test_settings_exposes_nonsecret_independent_role_contract() -> None:
         assert payload["roles"]["extraction"]["key_configured"] is False
         assert payload["roles"]["embeddings"]["dimensions"] == 768
         assert payload["roles"]["vision"]["structured_output_mode"] == "json_object"
+        assert payload["roles"]["vision"]["auth_scheme"] == "Bearer"
+        assert payload["roles"]["vision"]["send_model"] is True
+        assert payload["provider_retry"]["attempts"] >= 1
         assert payload["configured_roles"] == {"extraction": False, "reasoning": False, "vision": False, "embeddings": False}
 
 
