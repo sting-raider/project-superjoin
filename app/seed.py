@@ -35,6 +35,10 @@ def seed_demo() -> None:
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (claim["id"], claim["workspace_id"], claim["document_id"], claim["subject"], claim["predicate"], claim["raw_value"], claim["normalized_value"], claim["value_type"], claim["unit"], claim.get("precision"), claim["period"], claim["modality"], claim["scope"], json.dumps(claim["evidence"]), "grounded", "accepted", created_at),
             )
+            conn.execute(
+                "UPDATE claims SET precision=? WHERE id=? AND precision IS NULL",
+                (claim.get("precision"), claim["id"]),
+            )
             conn.execute("INSERT OR IGNORE INTO claims_fts(claim_id,workspace_id,subject,predicate,raw_value,period,modality,scope) VALUES(?,?,?,?,?,?,?,?)", (claim["id"], claim["workspace_id"], claim["subject"], claim["predicate"], claim["raw_value"], claim["period"] or "", claim["modality"] or "", claim["scope"] or ""))
             evidence = claim["evidence"]
             page = int(evidence.get("pdf_page") or 1)
