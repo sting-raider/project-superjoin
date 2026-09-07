@@ -19,6 +19,7 @@ CORE_PRODUCTION_MODULES = (
     "main.py",
     "seed.py",
 )
+FRONTEND_PRODUCTION_FILES = ("web/src/main.jsx",)
 
 # These are identifiers from the supplied evaluation corpus. Domain terms such
 # as revenue remain valid open-vocabulary outputs, but production code may not
@@ -38,12 +39,16 @@ FORBIDDEN_CORPUS_MARKERS = (
 
 def test_production_reasoning_is_starter_corpus_blind() -> None:
     app_dir = Path(__file__).parents[1] / "app"
-    production = "\n".join(
-        (app_dir / filename).read_text(encoding="utf-8").casefold()
-        for filename in CORE_PRODUCTION_MODULES
-    )
+    root = app_dir.parents[0]
+    production_files = [app_dir / filename for filename in CORE_PRODUCTION_MODULES]
+    production_files.extend(root / filename for filename in FRONTEND_PRODUCTION_FILES)
+    production = "\n".join(path.read_text(encoding="utf-8").casefold() for path in production_files)
     for filename in CORE_PRODUCTION_MODULES:
         source = (app_dir / filename).read_text(encoding="utf-8").casefold()
+        leaked = [marker for marker in FORBIDDEN_CORPUS_MARKERS if marker in source]
+        assert not leaked, f"{filename} contains starter-corpus markers: {leaked}"
+    for filename in FRONTEND_PRODUCTION_FILES:
+        source = (root / filename).read_text(encoding="utf-8").casefold()
         leaked = [marker for marker in FORBIDDEN_CORPUS_MARKERS if marker in source]
         assert not leaked, f"{filename} contains starter-corpus markers: {leaked}"
 
