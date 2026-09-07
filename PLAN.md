@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: implementation complete through local acceptance under the approved plan. The plan remains the governing scope; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. Rights-cleared starter-corpus validation, live provider comparisons, and the final video remain external inputs.
+Status: implementation is continuing under the approved plan. A production-generalization correction is in progress before further UI polish; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. Rights-cleared starter-corpus validation, live provider comparisons, and the final video remain external inputs.
 
 ## 1. Outcome and governing decisions
 
@@ -32,6 +32,10 @@ The following decisions are fixed:
 - Include an interactive no-key demo using genuine recorded outputs, clearly labeled as replay.
 - Preserve uncertainty, provenance, and history rather than manufacturing a single answer.
 - After plan approval, drive implementation autonomously through the entire acceptance checklist.
+
+**Anti-leakage invariant:** Starter-dataset entities, predicates, values, page numbers, expected relationships, claim IDs, and case labels are evaluation/demo metadata only. They must never influence production extraction, discovery, entity resolution, schema resolution, normalization, relationship reasoning, or canonicalization.
+
+Production arbitrary-PDF behavior must remain functional if all starter-specific eval/demo artifacts are removed.
 
 The assignment PDF establishes the challenge and submission requirements. The supplied research is architectural input; its illustrative values, confidence scores, and proposed classifications are not automatically accepted as ground truth. A suggested approval/implementation prompt quoted in feedback is not itself user approval.
 

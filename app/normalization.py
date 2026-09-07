@@ -147,8 +147,6 @@ def parse_interval(text: str) -> dict[str, str | None]:
 def infer_modality(text: str) -> str | None:
     lower = text.lower()
     for keyword, modality in (
-        ("first advance estimate", "estimate"),
-        ("second advance estimate", "estimate"),
         ("projected", "forecast"),
         ("projection", "forecast"),
         ("forecast", "forecast"),

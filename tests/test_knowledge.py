@@ -21,20 +21,20 @@ def _claim(**overrides):
     return value
 
 
-def test_vintage_difference_reconciles_instead_of_calling_it_false() -> None:
+def test_same_explicit_context_does_not_infer_a_hidden_vintage() -> None:
     relationship, _, _, _ = compare_claim_pair(
         _claim(normalized_value="0.064"),
         _claim(normalized_value="0.065", evidence_json=json.dumps({"text": "second advance estimate"})),
     )
-    assert relationship == "RECONCILES"
+    assert relationship == "CONTRADICTS"
 
 
-def test_role_ending_event_supersedes_prior_role() -> None:
+def test_temporal_semantic_change_abstains_for_reasoning_lane() -> None:
     relationship, _, _, _ = compare_claim_pair(
         _claim(subject="Suvir Suren Sujan", predicate="director_role", period="2022-05-14", value_type="semantic", normalized_value="director", evidence_json=json.dumps({"text": "director"})),
         _claim(subject="Suvir Suren Sujan", predicate="director_role", period="2023-08-24", value_type="semantic", normalized_value="ceased", evidence_json=json.dumps({"text": "resigned"})),
     )
-    assert relationship == "SUPERSEDES"
+    assert relationship == "UNRELATED"
 
 
 def test_live_sqlite_relationship_uses_precision_and_aggregates_evidence(tmp_path: Path) -> None:

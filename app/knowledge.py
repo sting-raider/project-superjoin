@@ -339,12 +339,7 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
     elif a["normalized_value"] == b["normalized_value"]:
         dimensions["value"] = "equal"
     if a["period"] != b["period"]:
-        if a["predicate"].lower().endswith("role") and {str(a["normalized_value"]).lower(), str(b["normalized_value"]).lower()} >= {"director", "ceased"}:
-            return "SUPERSEDES", "A later evidenced role-ending event supersedes the earlier role state.", dimensions, 0.97
         return "UNRELATED", "The claims apply to different periods.", dimensions, 0.93
-    evidence_text = " ".join(json.loads(row["evidence_json"]).get("text", "") for row in (a, b))
-    if "first advance" in evidence_text.lower() and "second advance" in evidence_text.lower():
-        return "RECONCILES", "The claims identify different official data vintages.", dimensions, 0.98
     if dimensions["value"] in {"equal", "rounding-compatible"}:
         return "CORROBORATES", "Values are equivalent after deterministic normalization.", dimensions, 0.96
     if a["modality"] != b["modality"]:

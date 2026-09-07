@@ -90,25 +90,40 @@ def _printed_page(text: str) -> str | None:
 
 
 def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
-    """High-recall deterministic candidates used with or without a model key."""
+    """Domain-neutral numeric hints for the semantic extraction lane.
+
+    These hints are deliberately open-vocabulary. They improve grounding and
+    provide a limited offline fallback, but they never define which predicates
+    the model may discover.
+    """
     text = page.text
     candidates: list[dict[str, Any]] = []
-    patterns = [
-        (r"(?P<label>revenue(?: from services| from operations| from contracts with customers| from customers)?)\D{0,100}(?P<value>(?:₹|Rs\.?|INR|\$)?\s*\(?[\d,]+(?:\.\d+)?\)?\s*(?:crore|cr|million|mn|billion|bn|%|per cent|percent)?)", "financial_metric"),
-        (r"(?P<label>real gross domestic product(?: \(GDP\))?|real GDP growth|GDP growth)\D{0,100}(?P<value>\(?\d+(?:\.\d+)?\)?\s*(?:%|per cent|percent))", "macro_metric"),
-        (r"(?P<label>EBITDA(?: margin)?|Adjusted EBITDA)\D{0,100}(?P<value>(?:₹|Rs\.?|INR)?\s*\(?[\d,]+(?:\.\d+)?\)?\s*(?:crore|cr|million|mn|billion|bn|%|per cent|percent)?)", "financial_metric"),
-    ]
-    for pattern, category in patterns:
-        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+    value_pattern = re.compile(
+        r"(?P<value>(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*\(?[-+]?\d[\d,]*(?:\.\d+)?\)?"
+        r"\s*(?:trillion|billion|million|thousand|crore|lakh|bn|mn|cr|k|%|per\s+cent|percent|bps)?)",
+        flags=re.IGNORECASE,
+    )
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        compact_line = re.sub(r"\s+", " ", line).strip()
+        if not compact_line or not re.search(r"[A-Za-z]", compact_line):
+            offset += len(line)
+            continue
+        for match in value_pattern.finditer(line):
             raw_value = match.group("value").strip()
+            if not _useful_numeric_hint(raw_value, compact_line):
+                continue
             parsed = parse_numeric(raw_value)
-            context_start = max(0, match.start() - 180)
-            context_end = min(len(text), match.end() + 260)
+            context_start = max(0, offset + match.start() - 180)
+            context_end = min(len(text), offset + match.end() + 260)
             excerpt = re.sub(r"\s+", " ", text[context_start:context_end]).strip()
+            label = _open_vocabulary_label(line[: match.start()])
+            if not label:
+                continue
             flags = security_flags(excerpt)
             candidates.append({
-                "subject": _subject(text),
-                "predicate": re.sub(r"\s+", " ", match.group("label")).strip().lower().replace(" ", "_"),
+                "subject": "Document subject",
+                "predicate": label,
                 "raw_value": raw_value,
                 "normalized_value": parsed.get("normalized"),
                 "value_type": parsed.get("value_type", "text"),
@@ -120,39 +135,36 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
                 "scope": "consolidated" if "consolidated" in excerpt.lower() else None,
                 "evidence": {**evidence_for(page, context_start, context_end, excerpt), "security_flags": flags},
                 "security_flags": flags,
-                "category": category,
+                "category": "open_numeric_hint",
             })
-    semantic_patterns = [
-        (r"(?P<name>[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,5}).{0,100}(?:resigned|ceased to be|appointed as).{0,100}(?P<role>director)", "director_role"),
-    ]
-    for pattern, predicate in semantic_patterns:
-        for match in re.finditer(pattern, text):
-            context_start = max(0, match.start() - 80)
-            context_end = min(len(text), match.end() + 180)
-            excerpt = re.sub(r"\s+", " ", text[context_start:context_end]).strip()
-            flags = security_flags(excerpt)
-            candidates.append({
-                "subject": match.group("name").strip(),
-                "predicate": predicate,
-                "raw_value": excerpt,
-                "normalized_value": excerpt,
-                "value_type": "semantic",
-                "unit": None,
-                "period": parse_period(excerpt),
-                "modality": "actual",
-                "scope": None,
-                "evidence": {**evidence_for(page, context_start, context_end, excerpt), "security_flags": flags},
-                "security_flags": flags,
-                "category": "semantic",
-            })
+        offset += len(line)
     return _dedupe_candidates(candidates)
 
 
-def _subject(text: str) -> str:
-    for candidate in ("Delhivery", "India", "Indian economy"):
-        if candidate.lower() in text.lower():
-            return candidate
-    return "Document subject"
+def _open_vocabulary_label(prefix: str) -> str | None:
+    words = re.findall(r"[A-Za-z][A-Za-z0-9&'/-]*", prefix)
+    if not words:
+        return None
+    label = "_".join(words[-8:]).casefold().replace("-", "_").replace("/", "_")
+    return re.sub(r"_+", "_", label).strip("_") or None
+
+
+def _useful_numeric_hint(raw_value: str, line: str) -> bool:
+    """Reject isolated page/year tokens while retaining arbitrary metrics."""
+
+    has_measure = bool(
+        re.search(
+            r"(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£|trillion|billion|million|thousand|crore|lakh|bn|mn|cr|%|per\s+cent|percent|bps)",
+            raw_value,
+            flags=re.IGNORECASE,
+        )
+    )
+    digits = re.sub(r"\D", "", raw_value)
+    if has_measure:
+        return True
+    if len(digits) == 4 and digits.startswith(("19", "20")):
+        return False
+    return len(line.split()) >= 3 and bool(re.search(r"[A-Za-z].*\d|\d.*[A-Za-z]", line))
 
 
 def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
