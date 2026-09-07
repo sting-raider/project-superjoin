@@ -1,7 +1,8 @@
 FROM node:22-alpine AS web-build
 WORKDIR /web
 COPY web/package.json ./
-RUN npm install --no-audit --no-fund
+COPY web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
@@ -12,7 +13,6 @@ RUN useradd --create-home --uid 10001 appuser
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
 COPY app ./app
-COPY demo ./demo
 COPY scripts ./scripts
 COPY README.md ./README.md
 COPY --from=web-build /web/dist ./web/dist
@@ -20,4 +20,3 @@ RUN mkdir -p /app/data/uploads && chown -R appuser:appuser /app
 USER appuser
 EXPOSE 8080
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
-

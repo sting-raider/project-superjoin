@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+.venv
+__pycache__
+*.pyc
+node_modules
+web/dist
+data
+tmp
+.pytest_cache
+project_superjoin.egg-info
