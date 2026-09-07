@@ -22,3 +22,8 @@ def test_model_evidence_must_match_a_source_candidate() -> None:
     candidates = [{"raw_value": "10%", "evidence": {"text": "Revenue growth was 10% in FY24."}}]
     assert _model_claim_grounded({"raw_value": "10%", "evidence": {"text": "Revenue growth was 10% in FY24."}}, candidates)
     assert not _model_claim_grounded({"raw_value": "$900 billion", "evidence": {"text": "Revenue was $900 billion."}}, candidates)
+    assert _model_claim_grounded(
+        {"raw_value": "6.5%", "evidence": {"text": "GDP growth is projected at 6.5% in FY26."}},
+        [],
+        [{"pdf_page": 2, "text": "The base case says GDP growth is projected at 6.5% in FY26."}],
+    )

@@ -43,8 +43,9 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
             if "low-native-text" in page.flags or "no-word-geometry" in page.flags:
                 visual = _vision_extract_page(data, page.index, filename, run_id)
                 all_candidates.extend(visual)
-        if available() and all_candidates:
-            model_candidates = _model_extract(all_candidates, filename, run_id)
+        source_pages = [{"pdf_page": page.index + 1, "text": page.text[:6000]} for page in parsed.pages[:24] if page.text.strip()]
+        if available() and (all_candidates or source_pages):
+            model_candidates = _model_extract(all_candidates, filename, run_id, source_pages)
             if model_candidates:
                 all_candidates = model_candidates
         _update_run(run_id, 60, f"Grounding {len(all_candidates)} candidate claims")
@@ -61,8 +62,10 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         _update_run(run_id, 100, f"Failed: {exc}", status="failed")
 
 
-def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str) -> list[dict[str, Any]]:
-    compact = json.dumps(candidates[:80], ensure_ascii=False)
+def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str, source_pages: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    source_pages = source_pages or []
+    source_payload = {"candidates": candidates[:80], "pages": source_pages}
+    compact = json.dumps(source_payload, ensure_ascii=False)
     chosen_model = settings.extraction_model
     digest = input_hash(EXTRACTION_PROMPT_VERSION, filename, compact)
     with db() as conn:
@@ -72,7 +75,7 @@ def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str)
             data = json.loads(cached["response_json"])
             _record_model_call(run_id, "extraction", chosen_model, digest, "cache_hit", 0.0, cache_hit=True)
             if isinstance(data, dict) and isinstance(data.get("claims"), list):
-                valid = [item for item in data["claims"] if isinstance(item, dict) and item.get("evidence") and validate_model_claim(item) and _model_claim_grounded(item, candidates)]
+                valid = [item for item in data["claims"] if isinstance(item, dict) and item.get("evidence") and validate_model_claim(item) and _model_claim_grounded(item, candidates, source_pages)]
                 return valid or candidates
         except json.JSONDecodeError:
             pass
@@ -99,22 +102,23 @@ def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str)
         conn.execute("INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)", (_id("cache"), "extraction", result.model, digest, json.dumps(result.data, ensure_ascii=False), result.estimated_cost, utc_now()))
     data = result.data
     if isinstance(data, dict) and isinstance(data.get("claims"), list):
-        valid = [item for item in data["claims"] if isinstance(item, dict) and item.get("evidence") and validate_model_claim(item) and _model_claim_grounded(item, candidates)]
+        valid = [item for item in data["claims"] if isinstance(item, dict) and item.get("evidence") and validate_model_claim(item) and _model_claim_grounded(item, candidates, source_pages)]
         return valid or candidates
     return candidates
 
 
-def _model_claim_grounded(item: dict[str, Any], candidates: list[dict[str, Any]]) -> bool:
-    """Allow model claims only when their evidence is present in a source candidate."""
+def _model_claim_grounded(item: dict[str, Any], candidates: list[dict[str, Any]], source_pages: list[dict[str, Any]] | None = None) -> bool:
+    """Allow model claims only when their evidence is present in supplied source text."""
 
     evidence = item.get("evidence") or {}
     evidence_text = " ".join(str(evidence.get("text") or "").split()).casefold()
     raw_value = " ".join(str(item.get("raw_value") or "").split()).casefold()
     if not evidence_text:
         return False
-    for candidate in candidates:
-        source = candidate.get("evidence") or {}
-        source_text = " ".join(str(source.get("text") or "").split()).casefold()
+    source_texts = [str((candidate.get("evidence") or {}).get("text") or "") for candidate in candidates]
+    source_texts.extend(str(page.get("text") or "") for page in source_pages or [])
+    for source_value in source_texts:
+        source_text = " ".join(source_value.split()).casefold()
         if source_text and (evidence_text in source_text or source_text in evidence_text):
             return True
         if raw_value and source_text and raw_value in source_text:
