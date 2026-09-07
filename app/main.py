@@ -146,7 +146,12 @@ def fact(fact_id: str) -> dict[str, Any]:
             raise HTTPException(404, "Fact not found")
         claims = rows_to_dicts(conn.execute("SELECT * FROM claims WHERE workspace_id=? AND subject=? AND predicate=? AND (period=? OR ? IS NULL)", (item["workspace_id"], item["subject"], item["predicate"], item["period"], item["period"])).fetchall())
         relationships = rows_to_dicts(conn.execute("SELECT * FROM relationships WHERE workspace_id=? AND (claim_a IN (SELECT id FROM claims WHERE subject=? AND predicate=?) OR claim_b IN (SELECT id FROM claims WHERE subject=? AND predicate=?))", (item["workspace_id"], item["subject"], item["predicate"], item["subject"], item["predicate"])).fetchall())
-    return {"fact": item, "claims": claims, "relationships": relationships}
+        anchors = rows_to_dicts(conn.execute("""SELECT ea.*,ce.claim_id,ce.purpose
+            FROM evidence_anchors ea JOIN claim_evidence ce ON ce.anchor_id=ea.id
+            WHERE ce.claim_id IN (SELECT id FROM claims WHERE workspace_id=? AND subject=? AND predicate=? AND (period=? OR ? IS NULL))
+            ORDER BY ea.pdf_page,ea.id""", (item["workspace_id"], item["subject"], item["predicate"], item["period"], item["period"])).fetchall())
+        interpretations = rows_to_dicts(conn.execute("SELECT * FROM claim_interpretations WHERE claim_id IN (SELECT id FROM claims WHERE workspace_id=? AND subject=? AND predicate=? AND (period=? OR ? IS NULL)) ORDER BY created_at", (item["workspace_id"], item["subject"], item["predicate"], item["period"], item["period"])).fetchall())
+    return {"fact": item, "claims": claims, "anchors": anchors, "interpretations": interpretations, "relationships": relationships}
 
 
 @app.get("/api/v1/relationships")

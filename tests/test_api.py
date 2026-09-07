@@ -33,3 +33,19 @@ def test_dynamic_registries_are_visible_without_overmerging() -> None:
         keys = {item["key"] for item in predicates}
         assert "revenue_from_services" in keys
         assert "revenue_from_contracts_with_customers" in keys
+
+
+def test_fact_inspector_keeps_both_revenue_evidence_anchors() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/facts/fact-delhivery-revenue-fy24")
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload["fact"]["evidence"]) == 2
+        assert {claim["id"] for claim in payload["claims"]} >= {
+            "clm-delhivery-revenue-annual",
+            "clm-delhivery-revenue-presentation",
+        }
+        assert {anchor["claim_id"] for anchor in payload["anchors"]} >= {
+            "clm-delhivery-revenue-annual",
+            "clm-delhivery-revenue-presentation",
+        }

@@ -63,6 +63,7 @@ def seed_demo() -> None:
 
 def _seed_facts(conn) -> None:
     rows = conn.execute("SELECT id,workspace_id,subject,predicate,normalized_value,raw_value,value_type,unit,period,modality,scope,evidence_json FROM claims ORDER BY id").fetchall()
+    groups: dict[str, dict[str, object]] = {}
     for row in rows:
         fact_id = f"fact-{row['id']}"
         status = "SUPPORTED"
@@ -73,9 +74,25 @@ def _seed_facts(conn) -> None:
             fact_id, status, reason = "fact-india-gdp-fy25", "SUPPORTED", "Context-specific data vintages remain visible as separate source claims."
         elif row["id"] in {"clm-rbi-gdp-fy26", "clm-imf-gdp-fy26"}:
             fact_id, status, reason = "fact-india-gdp-fy26", "CONTESTED", "Competing institutional forecasts; strict Trust Gate blocks an unqualified value."
+        group = groups.setdefault(fact_id, {"row": row, "status": status, "reason": reason, "evidence": [], "claims": []})
+        evidence = json.loads(row["evidence_json"])
+        group["evidence"].append({"claim_id": row["id"], **evidence})
+        group["claims"].append(row["id"])
+    for fact_id, group in groups.items():
+        row = group["row"]
         conn.execute(
             """INSERT OR IGNORE INTO facts
             (id,workspace_id,subject,predicate,normalized_value,display_value,value_type,unit,period,modality,scope,status,reason,evidence_json,revision,updated_at)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (fact_id, row["workspace_id"], row["subject"], row["predicate"], row["normalized_value"], row["raw_value"], row["value_type"], row["unit"], row["period"], row["modality"], row["scope"], status, reason, row["evidence_json"], 1, utc_now()),
+            (fact_id, row["workspace_id"], row["subject"], row["predicate"], row["normalized_value"], row["raw_value"], row["value_type"], row["unit"], row["period"], row["modality"], row["scope"], group["status"], group["reason"], json.dumps(group["evidence"], ensure_ascii=False), 1, utc_now()),
         )
+        conn.execute("UPDATE facts SET status=?,reason=?,evidence_json=?,updated_at=? WHERE id=?", (group["status"], group["reason"], json.dumps(group["evidence"], ensure_ascii=False), utc_now(), fact_id))
+        version_id = f"{fact_id}-v1"
+        conn.execute(
+            """INSERT OR IGNORE INTO fact_versions
+            (id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            (version_id, fact_id, 1, row["normalized_value"], row["raw_value"], group["status"], group["reason"], 1, json.dumps(group["evidence"], ensure_ascii=False), utc_now()),
+        )
+        for claim_id in group["claims"]:
+            conn.execute("INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)", (version_id, claim_id, "supporting", utc_now()))
