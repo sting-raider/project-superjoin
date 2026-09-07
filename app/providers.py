@@ -196,11 +196,13 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
             if not transient or attempt + 1 >= attempts:
                 raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}", attempts=attempts_used) from exc
             retry_after = _retry_after_seconds(exc)
-            base = float(getattr(settings, "provider_retry_backoff_seconds", 0.25))
-            delay = retry_after if retry_after is not None else base * (2**attempt)
-            time.sleep(max(0.0, delay + random.uniform(0.0, min(base, 0.25))))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise ProviderError(f"{role} provider request failed: {exc}", attempts=attempts_used) from exc
+            _sleep_before_retry(attempt, retry_after)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if attempt + 1 >= attempts:
+                raise ProviderError(f"{role} provider request failed: {exc}", attempts=attempts_used) from exc
+            _sleep_before_retry(attempt)
+        except json.JSONDecodeError as exc:
+            raise ProviderError(f"{role} provider returned invalid JSON: {exc}", attempts=attempts_used) from exc
     if raw is None:  # pragma: no cover - loop either returns or raises
         raise ProviderError(f"{role} provider returned no response", attempts=attempts_used)
     elapsed = int((time.perf_counter() - started) * 1000)
@@ -248,6 +250,12 @@ def _retry_after_seconds(error: urllib.error.HTTPError) -> float | None:
         return max(0.0, float(value)) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _sleep_before_retry(attempt: int, retry_after: float | None = None) -> None:
+    base = float(getattr(settings, "provider_retry_backoff_seconds", 0.25))
+    delay = retry_after if retry_after is not None else base * (2**attempt)
+    time.sleep(max(0.0, delay + random.uniform(0.0, min(base, 0.25))))
 
 
 def structured_chat(role: str, system: str, user: str, model: str | None = None, max_output_tokens: int = 1200) -> ProviderResult:

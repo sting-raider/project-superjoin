@@ -221,3 +221,32 @@ def test_exhausted_transient_provider_error_exposes_attempt_count(monkeypatch) -
     with pytest.raises(providers.ProviderError) as error:
         providers.structured_chat("extraction", "system", "user")
     assert error.value.attempts == 3
+
+
+def test_transient_network_failure_uses_bounded_retry_policy(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="http://network-retry.example/v1",
+        extraction_api_key="retry-key",
+        extraction_model="arbitrary-network-model",
+        provider_retry_attempts=2,
+        provider_retry_backoff_seconds=0.01,
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def fake_urlopen(_request, timeout):
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise urllib.error.URLError("connection reset")
+        return _Response({"choices": [{"message": {"content": json.dumps({"claims": []})}}]})
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(providers.time, "sleep", lambda delay: sleeps.append(delay))
+    result = providers.structured_chat("extraction", "system", "user")
+    assert result.data == {"claims": []}
+    assert result.attempts == 2
+    assert calls == [90, 90]
+    assert len(sleeps) == 1
+    assert 0.0 <= sleeps[0] <= 0.25
