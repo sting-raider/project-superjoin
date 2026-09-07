@@ -17,12 +17,10 @@ from fastapi.staticfiles import StaticFiles
 from .budget import snapshot as budget_snapshot
 from .config import settings
 from .db import db, init_db, row_to_dict, rows_to_dicts, utc_now
-from .demo_data import DEMO_CASES
 from .knowledge import assess_relationships, rebuild_workspace, resolve_fact, set_document_archived
 from .pipeline import process_document
 from .providers import ProviderError, available
 from .retrieval import create_embedding_space, embed_claim, search_claims
-from .seed import seed_demo
 
 app = FastAPI(title="Project SuperJoin", version="0.1.0", description="Evidence-first temporal fact knowledge layer")
 
@@ -31,7 +29,19 @@ app = FastAPI(title="Project SuperJoin", version="0.1.0", description="Evidence-
 def startup() -> None:
     init_db()
     if settings.demo_mode:
+        from .seed import seed_demo
+
         seed_demo()
+
+
+def _workspace_or_default(workspace_id: str | None) -> str:
+    if workspace_id:
+        return workspace_id
+    with db() as conn:
+        row = conn.execute("SELECT id FROM workspaces ORDER BY created_at,id LIMIT 1").fetchone()
+    if not row:
+        raise HTTPException(404, "No workspace is available")
+    return str(row["id"])
 
 
 @app.get("/api/v1/health")
@@ -72,7 +82,8 @@ def workspace_detail(workspace_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/v1/overview")
-def overview(workspace_id: str = "delhivery") -> dict[str, Any]:
+def overview(workspace_id: str | None = None) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         workspace = row_to_dict(conn.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone())
         if not workspace:
@@ -87,7 +98,8 @@ def overview(workspace_id: str = "delhivery") -> dict[str, Any]:
 
 
 @app.get("/api/v1/documents")
-def documents(workspace_id: str = "delhivery") -> dict[str, Any]:
+def documents(workspace_id: str | None = None) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         rows = conn.execute("SELECT * FROM documents WHERE workspace_id=? ORDER BY published_at DESC, name", (workspace_id,)).fetchall()
     return {"items": rows_to_dicts(rows)}
@@ -136,7 +148,8 @@ def reactivate_document(document_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/v1/documents", status_code=202)
-async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), workspace_id: str = Form("delhivery")) -> dict[str, Any]:  # noqa: B008
+async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), workspace_id: str | None = Form(None)) -> dict[str, Any]:  # noqa: B008
+    workspace_id = _workspace_or_default(workspace_id)
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Upload a PDF file")
     max_bytes = settings.max_pdf_mb * 1024 * 1024
@@ -178,7 +191,8 @@ def run(run_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/v1/runs")
-def runs(workspace_id: str = "delhivery", limit: int = 50) -> dict[str, Any]:
+def runs(workspace_id: str | None = None, limit: int = 50) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         rows = conn.execute("SELECT * FROM runs WHERE workspace_id=? ORDER BY created_at DESC LIMIT ?", (workspace_id, max(1, min(limit, 200)))).fetchall()
     return {"items": rows_to_dicts(rows)}
@@ -244,7 +258,8 @@ async def run_events(run_id: str, after_id: int = 0) -> StreamingResponse:
 
 
 @app.get("/api/v1/facts")
-def facts(workspace_id: str = "delhivery", q: str = "", status: str | None = None, limit: int = 200) -> dict[str, Any]:
+def facts(workspace_id: str | None = None, q: str = "", status: str | None = None, limit: int = 200) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         params: list[Any] = [workspace_id]
         clauses = ["workspace_id=?", "active=1"]
@@ -267,7 +282,8 @@ def facts(workspace_id: str = "delhivery", q: str = "", status: str | None = Non
 
 
 @app.get("/api/v1/search")
-def search(workspace_id: str = "delhivery", q: str = "", limit: int = 20, space_id: str | None = None) -> dict[str, Any]:
+def search(workspace_id: str | None = None, q: str = "", limit: int = 20, space_id: str | None = None) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     if not q.strip():
         return {"items": [], "lanes": {"lexical": 0, "dense": 0, "hybrid": 0}, "embedding_available": False, "embedding_error": None}
     return search_claims(workspace_id, q, max(1, min(limit, 100)), space_id=space_id)
@@ -311,7 +327,8 @@ def claim_detail(claim_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/v1/relationships")
-def relationships(workspace_id: str = "delhivery", relationship_type: str | None = None) -> dict[str, Any]:
+def relationships(workspace_id: str | None = None, relationship_type: str | None = None) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         if relationship_type:
             rows = conn.execute("SELECT * FROM relationships WHERE workspace_id=? AND relationship_type=? ORDER BY created_at DESC", (workspace_id, relationship_type.upper())).fetchall()
@@ -321,7 +338,8 @@ def relationships(workspace_id: str = "delhivery", relationship_type: str | None
 
 
 @app.get("/api/v1/entities")
-def entities(workspace_id: str = "delhivery") -> dict[str, Any]:
+def entities(workspace_id: str | None = None) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         rows = conn.execute("SELECT * FROM entities WHERE workspace_id=? ORDER BY canonical_name", (workspace_id,)).fetchall()
         aliases = conn.execute("SELECT ea.* FROM entity_aliases ea JOIN entities e ON e.id=ea.entity_id WHERE e.workspace_id=? ORDER BY ea.alias", (workspace_id,)).fetchall()
@@ -329,7 +347,8 @@ def entities(workspace_id: str = "delhivery") -> dict[str, Any]:
 
 
 @app.get("/api/v1/predicates")
-def predicates(workspace_id: str = "delhivery") -> dict[str, Any]:
+def predicates(workspace_id: str | None = None) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         rows = conn.execute("SELECT * FROM predicates WHERE workspace_id=? ORDER BY key", (workspace_id,)).fetchall()
         aliases = conn.execute("SELECT pa.* FROM predicate_aliases pa JOIN predicates p ON p.id=pa.predicate_id WHERE p.workspace_id=? ORDER BY pa.alias", (workspace_id,)).fetchall()
@@ -368,14 +387,16 @@ def embed_claim_endpoint(claim_id: str, payload: dict[str, Any]) -> dict[str, An
 
 
 @app.get("/api/v1/changes")
-def changes(workspace_id: str = "delhivery") -> dict[str, Any]:
+def changes(workspace_id: str | None = None) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         rows = conn.execute("SELECT * FROM changes WHERE workspace_id=? ORDER BY created_at DESC LIMIT 100", (workspace_id,)).fetchall()
     return {"items": rows_to_dicts(rows)}
 
 
 @app.get("/api/v1/exports/facts")
-def export_facts(workspace_id: str = "delhivery", format: str = "json") -> Response:
+def export_facts(workspace_id: str | None = None, format: str = "json") -> Response:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         rows = rows_to_dicts(conn.execute("SELECT * FROM facts WHERE workspace_id=? AND active=1 ORDER BY subject,predicate,period", (workspace_id,)).fetchall())
     normalized_format = format.casefold()
@@ -417,11 +438,15 @@ def _export_cell(key: str, value: Any) -> Any:
 
 @app.get("/api/v1/cases")
 def cases() -> dict[str, Any]:
+    if not settings.demo_mode:
+        return {"items": []}
+    from .demo_data import DEMO_CASES
+
     return {"items": DEMO_CASES}
 
 
 def _resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    workspace_id = str(payload.get("workspace_id") or "delhivery")
+    workspace_id = _workspace_or_default(payload.get("workspace_id"))
     subject = str(payload.get("subject") or "")
     predicate = str(payload.get("predicate") or "")
     period = payload.get("period")
@@ -433,7 +458,7 @@ def _resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/api/v1/resolve")
-def resolve(workspace_id: str = "delhivery", subject: str = "", predicate: str = "", period: str | None = None, policy: str = "strict", known_at_revision: int | None = None) -> dict[str, Any]:
+def resolve(workspace_id: str | None = None, subject: str = "", predicate: str = "", period: str | None = None, policy: str = "strict", known_at_revision: int | None = None) -> dict[str, Any]:
     return _resolve_payload({"workspace_id": workspace_id, "subject": subject, "predicate": predicate, "period": period, "policy": policy, "known_at_revision": known_at_revision})
 
 
@@ -466,7 +491,8 @@ def create_review(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/api/v1/reviews")
-def reviews(workspace_id: str = "delhivery", include_stale: bool = True) -> dict[str, Any]:
+def reviews(workspace_id: str | None = None, include_stale: bool = True) -> dict[str, Any]:
+    workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         if include_stale:
             rows = conn.execute("SELECT * FROM reviews WHERE workspace_id=? ORDER BY created_at DESC", (workspace_id,)).fetchall()
@@ -488,6 +514,8 @@ def settings_view() -> dict[str, Any]:
 
 @app.post("/api/v1/demo/reset")
 def reset_demo() -> dict[str, str]:
+    if not settings.demo_mode:
+        raise HTTPException(404, "Demo Mode is disabled")
     with db() as conn:
         for table in (
             "reviews",
@@ -515,6 +543,8 @@ def reset_demo() -> dict[str, str]:
         ):
             conn.execute(f"DELETE FROM {table}")
         conn.execute("UPDATE workspaces SET active_revision=1")
+    from .seed import seed_demo
+
     seed_demo()
     return {"status": "reset"}
 

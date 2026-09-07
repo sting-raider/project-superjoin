@@ -8,6 +8,7 @@ CORE_PRODUCTION_MODULES = (
     "registry.py",
     "knowledge.py",
     "normalization.py",
+    "main.py",
     "seed.py",
 )
 
