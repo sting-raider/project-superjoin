@@ -25,7 +25,7 @@ function Stat({ label, value, accent = false }) {
 }
 
 function App() {
-  const [workspace, setWorkspace] = useState('delhivery')
+  const [workspace, setWorkspace] = useState('')
   const [workspaces, setWorkspaces] = useState([])
   const [overview, setOverview] = useState(null)
   const [facts, setFacts] = useState([])
@@ -55,8 +55,13 @@ function App() {
     } catch (error) { setNotice(error.message) } finally { setLoading(false) }
   }
 
-  useEffect(() => { get('/workspaces').then((data) => { setWorkspaces(data.items); refresh('delhivery') }).catch((error) => setNotice(error.message)) }, [])
-  useEffect(() => { if (workspaces.length) refresh(workspace) }, [workspace])
+  useEffect(() => {
+    get('/workspaces').then((data) => {
+      setWorkspaces(data.items)
+      setWorkspace((current) => current && data.items.some((item) => item.id === current) ? current : (data.items[0]?.id || ''))
+    }).catch((error) => setNotice(error.message))
+  }, [])
+  useEffect(() => { if (workspace) refresh(workspace) }, [workspace])
 
   const filteredFacts = useMemo(() => {
     if (!query.trim()) return facts
@@ -99,9 +104,9 @@ function App() {
       <div className="brand"><div className="brand-mark">⌘</div><div><strong>Project SuperJoin</strong><small>Evidence workspace</small></div></div>
       <div className="workspace-picker"><label>WORKSPACE</label><select value={workspace} onChange={(event) => setWorkspace(event.target.value)}>{workspaces.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div>
       <nav>
-        {[['overview', 'Overview', '⌂'], ['facts', 'Facts', '▦'], ['documents', 'Documents', '▤'], ['cases', 'Required cases', '◈'], ['changes', 'Knowledge Diff', '↻'], ['runs', 'Runs', '▷'], ['review', 'Review', '✓'], ['trust', 'Trust Gate', '⊙'], ['settings', 'Settings', '⚙']].map(([key, label, icon]) => <button data-case-nav={key === 'cases' ? 'true' : undefined} className={section === key ? 'nav-item active' : 'nav-item'} onClick={() => setSection(key)} key={key}><span>{icon}</span>{label}{key === 'cases' && <em>4</em>}</button>)}
+        {[['overview', 'Overview', '⌂'], ['facts', 'Facts', '▦'], ['documents', 'Documents', '▤'], ['cases', 'Required cases', '◈'], ['changes', 'Knowledge Diff', '↻'], ['runs', 'Runs', '▷'], ['review', 'Review', '✓'], ['trust', 'Trust Gate', '⊙'], ['settings', 'Settings', '⚙']].map(([key, label, icon]) => <button data-case-nav={key === 'cases' ? 'true' : undefined} className={section === key ? 'nav-item active' : 'nav-item'} onClick={() => setSection(key)} key={key}><span>{icon}</span>{label}{key === 'cases' && cases.length > 0 && <em>{cases.length}</em>}</button>)}
       </nav>
-      <div className="sidebar-foot"><Badge tone="good">● Demo mode</Badge><p>Recorded model outputs are available without an API key.</p><button className="text-button" onClick={resetDemo}>Reset demo workspace</button></div>
+      <div className="sidebar-foot">{overview?.demo ? <><Badge tone="good">● Demo mode</Badge><p>Recorded model outputs are available without an API key.</p><button className="text-button" onClick={resetDemo}>Reset demo workspace</button></> : <><Badge tone="neutral">● Live workspace</Badge><p>Provider-backed PDF processing is enabled for this workspace.</p></>}</div>
     </aside>
     <main className="main">
       <header className="topbar"><div><span className="eyebrow">FACT KNOWLEDGE LAYER</span><h1>{overview?.workspace?.name || 'Workspace'}</h1></div><div className="top-actions"><label className="upload-button">＋ Upload PDF<input type="file" accept="application/pdf" onChange={onUpload} /></label><button className="icon-button" title="Search facts" onClick={() => setSection('facts')}>⌕</button></div></header>
@@ -114,7 +119,7 @@ function App() {
         {section === 'changes' && <Changes overview={overview} changes={changes} />}
         {section === 'runs' && <Runs runs={runs} />}
         {section === 'review' && <Review workspace={workspace} reviews={reviews} facts={facts} onRefresh={() => refresh()} />}
-        {section === 'trust' && <TrustGate workspace={workspace} />}
+        {section === 'trust' && <TrustGate workspace={workspace} facts={facts} />}
         {section === 'settings' && <Settings />}
       </>}
     </main>
@@ -165,19 +170,19 @@ function Review({ workspace, reviews, facts, onRefresh }) {
   return <div className="content"><div className="section-heading"><div><span className="eyebrow">HUMAN REVIEW</span><h2>Review queue</h2><p>Decisions attach to a fact revision and never overwrite source claims.</p></div></div><div className="review-layout"><form className="panel review-form" onSubmit={submit}><label>FACT<select value={factId} onChange={(event) => setFactId(event.target.value)}>{facts.map((fact) => <option value={fact.id} key={fact.id}>{fact.subject} · {fact.predicate} · {fact.period || 'no period'}</option>)}</select></label><label>DECISION<select value={action} onChange={(event) => setAction(event.target.value)}><option value="keep_unresolved">Keep unresolved</option><option value="prefer">Prefer for a named use</option><option value="confirm_context">Confirm context distinction</option></select></label><label>RATIONALE<textarea value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder="Why should this decision apply to this revision?" rows="5" /></label><button className="upload-button" type="submit">Record decision</button>{notice && <p className="form-notice">{notice}</p>}</form><div className="panel"><span className="eyebrow">DECISION LEDGER</span>{reviews.length ? reviews.map((review) => <div className="review-row" key={review.id}><Badge tone={review.stale ? 'warn' : 'good'}>{review.status}</Badge><div><strong>{review.action}</strong><small>{review.rationale}</small></div><span className="mono">rev {review.based_on_revision}</span></div>) : <div className="empty">No decisions recorded.</div>}</div></div></div>
 }
 
-function TrustGate({ workspace }) {
-  const [subject, setSubject] = useState(workspace === 'india-macro' ? 'India' : 'Delhivery')
-  const [predicate, setPredicate] = useState(workspace === 'india-macro' ? 'real_gdp_growth' : 'revenue_from_services')
-  const [period, setPeriod] = useState(workspace === 'india-macro' ? 'FY26' : 'FY24')
+function TrustGate({ workspace, facts }) {
+  const [subject, setSubject] = useState('')
+  const [predicate, setPredicate] = useState('')
+  const [period, setPeriod] = useState('')
   const [policy, setPolicy] = useState('strict')
   const [result, setResult] = useState(null)
   useEffect(() => {
-    const india = workspace === 'india-macro'
-    setSubject(india ? 'India' : 'Delhivery')
-    setPredicate(india ? 'real_gdp_growth' : 'revenue_from_services')
-    setPeriod(india ? 'FY26' : 'FY24')
+    const firstFact = facts.find((fact) => fact.subject && fact.predicate)
+    setSubject(firstFact?.subject || '')
+    setPredicate(firstFact?.predicate || '')
+    setPeriod(firstFact?.period || '')
     setResult(null)
-  }, [workspace])
+  }, [workspace, facts])
   const run = async (event) => { event.preventDefault(); try { setResult(await post('/resolve', { workspace_id: workspace, subject, predicate, period, policy })) } catch (error) { setResult({ error: error.message }) } }
   return <div className="content"><div className="section-heading"><div><span className="eyebrow">MACHINE CONSUMPTION</span><h2>Trust Gate</h2><p>Ask for a fact; blocked decisions return alternatives instead of an executable value.</p></div></div><div className="trust-layout"><form className="panel trust-form" onSubmit={run}><label>SUBJECT<input value={subject} onChange={(event) => setSubject(event.target.value)} /></label><label>PREDICATE<input value={predicate} onChange={(event) => setPredicate(event.target.value)} /></label><label>PERIOD<input value={period} onChange={(event) => setPeriod(event.target.value)} placeholder="Optional" /></label><label>POLICY<select value={policy} onChange={(event) => setPolicy(event.target.value)}><option value="strict">Strict</option><option value="human_preference">Explicit human preference</option></select></label><button className="upload-button" type="submit">Resolve fact</button></form><div className="panel gate-result">{result ? <><Badge tone={result.safe_to_use ? 'good' : 'bad'}>{result.decision}</Badge><h3>{result.safe_to_use ? result.display_value : 'No executable value'}</h3><p>{(result.reason_codes || []).join(' · ')}</p><pre>{JSON.stringify(result, null, 2)}</pre></> : <div className="empty">Submit a query to inspect the signed-off JSON response.</div>}</div></div></div>
 }
