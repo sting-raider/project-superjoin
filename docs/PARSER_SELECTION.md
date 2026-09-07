@@ -13,9 +13,11 @@ python scripts/benchmark_parsers.py C:\path\to\document.pdf --output evals/repor
 ```
 
 The report records actual timing, native text and word counts, empty-page
-counts, rendering support, and local allocation peaks. A source-verified
-comparison must use at least 20 representative pages across all six prepared
-documents and the annotated value/table regions. The repository does not
-contain those third-party PDFs, so an available local assignment PDF smoke run
-cannot be represented as the full 511-page selection benchmark. This remains a
-measured release input rather than an invented accuracy claim.
+counts, rendering support, and local allocation peaks. The locally prepared
+archive was available for a six-document comparison covering 20 pages from
+each PDF; see `evals/reports/parser-six-document.json`. PyMuPDF was roughly two
+orders of magnitude faster with comparable native text counts, but pdfplumber
+remains the runtime choice because its permissive license and word geometry
+contract are suitable for redistribution. This is a performance and coverage
+record, not a source-verified claim-accuracy benchmark; PyMuPDF stays an
+optional local candidate until a separate AGPL/commercial licensing decision.

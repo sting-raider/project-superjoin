@@ -123,6 +123,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   `scripts/benchmark_parsers.py`, `docs/PARSER_SELECTION.md`, and
   `evals/reports/parser-smoke.json`. This is not presented as the 511-page
   benchmark.
+- A six-document parser comparison now covers 20 pages from each locally
+  prepared starter PDF. PyMuPDF is substantially faster with comparable native
+  text counts, but its AGPL/commercial license remains unsuitable as the
+  default runtime dependency. The measured report is
+  `evals/reports/parser-six-document.json`; pdfplumber remains the compatible
+  primary parser and pypdfium2 remains the bounded renderer.
 - The runtime already records parser/version, page quality flags, evidence
   anchors, and visual-review dispositions so the full corpus comparison can be
   run without changing the claim contract.

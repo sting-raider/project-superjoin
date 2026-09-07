@@ -1,0 +1,226 @@
+{
+  "benchmark": "parser-selection-v1",
+  "page_limit": 20,
+  "files": [
+    {
+      "file": "01-delhivery-prospectus-2022-excerpt.pdf",
+      "bytes": 1597612,
+      "results": [
+        {
+          "backend": "pdfplumber",
+          "version": "0.11.9",
+          "pages": 20,
+          "characters": 56464,
+          "words": 8217,
+          "empty_pages": 0,
+          "elapsed_ms": 32806.82,
+          "peak_python_bytes": 163040826
+        },
+        {
+          "backend": "pymupdf",
+          "version": "1.28.2",
+          "available": true,
+          "pages": 20,
+          "characters": 64564,
+          "words": 7972,
+          "empty_pages": 0,
+          "elapsed_ms": 202.13,
+          "peak_python_bytes": 341286,
+          "license_note": "AGPL or commercial; do not add to runtime without a project-license decision."
+        },
+        {
+          "backend": "pypdfium2-render",
+          "version": "unknown",
+          "available": true,
+          "pages": 20,
+          "elapsed_ms": 308.63,
+          "note": "Rendering backend; layout/text metrics come from pdfplumber."
+        }
+      ]
+    },
+    {
+      "file": "02-delhivery-annual-report-fy24-excerpt.pdf",
+      "bytes": 6679023,
+      "results": [
+        {
+          "backend": "pdfplumber",
+          "version": "0.11.9",
+          "pages": 20,
+          "characters": 49924,
+          "words": 7840,
+          "empty_pages": 0,
+          "elapsed_ms": 11098.82,
+          "peak_python_bytes": 103671981
+        },
+        {
+          "backend": "pymupdf",
+          "version": "1.28.2",
+          "available": true,
+          "pages": 20,
+          "characters": 50829,
+          "words": 7278,
+          "empty_pages": 0,
+          "elapsed_ms": 129.44,
+          "peak_python_bytes": 267600,
+          "license_note": "AGPL or commercial; do not add to runtime without a project-license decision."
+        },
+        {
+          "backend": "pypdfium2-render",
+          "version": "unknown",
+          "available": true,
+          "pages": 20,
+          "elapsed_ms": 445.5,
+          "note": "Rendering backend; layout/text metrics come from pdfplumber."
+        }
+      ]
+    },
+    {
+      "file": "03-delhivery-q4-fy24-earnings-presentation.pdf",
+      "bytes": 1988328,
+      "results": [
+        {
+          "backend": "pdfplumber",
+          "version": "0.11.9",
+          "pages": 20,
+          "characters": 15344,
+          "words": 2660,
+          "empty_pages": 0,
+          "elapsed_ms": 8220.43,
+          "peak_python_bytes": 37538378
+        },
+        {
+          "backend": "pymupdf",
+          "version": "1.28.2",
+          "available": true,
+          "pages": 20,
+          "characters": 15593,
+          "words": 2672,
+          "empty_pages": 0,
+          "elapsed_ms": 85.65,
+          "peak_python_bytes": 104024,
+          "license_note": "AGPL or commercial; do not add to runtime without a project-license decision."
+        },
+        {
+          "backend": "pypdfium2-render",
+          "version": "unknown",
+          "available": true,
+          "pages": 20,
+          "elapsed_ms": 160.67,
+          "note": "Rendering backend; layout/text metrics come from pdfplumber."
+        }
+      ]
+    },
+    {
+      "file": "01-india-economic-survey-2024-25-excerpt.pdf",
+      "bytes": 3920928,
+      "results": [
+        {
+          "backend": "pdfplumber",
+          "version": "0.11.9",
+          "pages": 20,
+          "characters": 39852,
+          "words": 6012,
+          "empty_pages": 0,
+          "elapsed_ms": 13670.74,
+          "peak_python_bytes": 97693358
+        },
+        {
+          "backend": "pymupdf",
+          "version": "1.28.2",
+          "available": true,
+          "pages": 20,
+          "characters": 40724,
+          "words": 6037,
+          "empty_pages": 0,
+          "elapsed_ms": 153.81,
+          "peak_python_bytes": 146319,
+          "license_note": "AGPL or commercial; do not add to runtime without a project-license decision."
+        },
+        {
+          "backend": "pypdfium2-render",
+          "version": "unknown",
+          "available": true,
+          "pages": 20,
+          "elapsed_ms": 121.09,
+          "note": "Rendering backend; layout/text metrics come from pdfplumber."
+        }
+      ]
+    },
+    {
+      "file": "02-rbi-annual-report-2024-25-excerpt.pdf",
+      "bytes": 1507769,
+      "results": [
+        {
+          "backend": "pdfplumber",
+          "version": "0.11.9",
+          "pages": 20,
+          "characters": 61595,
+          "words": 8142,
+          "empty_pages": 0,
+          "elapsed_ms": 9663.5,
+          "peak_python_bytes": 118669900
+        },
+        {
+          "backend": "pymupdf",
+          "version": "1.28.2",
+          "available": true,
+          "pages": 20,
+          "characters": 63144,
+          "words": 8064,
+          "empty_pages": 0,
+          "elapsed_ms": 106.1,
+          "peak_python_bytes": 182780,
+          "license_note": "AGPL or commercial; do not add to runtime without a project-license decision."
+        },
+        {
+          "backend": "pypdfium2-render",
+          "version": "unknown",
+          "available": true,
+          "pages": 20,
+          "elapsed_ms": 100.51,
+          "note": "Rendering backend; layout/text metrics come from pdfplumber."
+        }
+      ]
+    },
+    {
+      "file": "03-imf-india-2025-article-iv-excerpt.pdf",
+      "bytes": 4305245,
+      "results": [
+        {
+          "backend": "pdfplumber",
+          "version": "0.11.9",
+          "pages": 20,
+          "characters": 61502,
+          "words": 11627,
+          "empty_pages": 1,
+          "elapsed_ms": 21193.89,
+          "peak_python_bytes": 129969712
+        },
+        {
+          "backend": "pymupdf",
+          "version": "1.28.2",
+          "available": true,
+          "pages": 20,
+          "characters": 59600,
+          "words": 8375,
+          "empty_pages": 1,
+          "elapsed_ms": 180.76,
+          "peak_python_bytes": 188117,
+          "license_note": "AGPL or commercial; do not add to runtime without a project-license decision."
+        },
+        {
+          "backend": "pypdfium2-render",
+          "version": "unknown",
+          "available": true,
+          "pages": 20,
+          "elapsed_ms": 230.51,
+          "note": "Rendering backend; layout/text metrics come from pdfplumber."
+        }
+      ]
+    }
+  ],
+  "decision": {
+    "runtime_primary": "pdfplumber",
+    "reason": "Retain the compatible pdfplumber stack until the complete six-document source-verified comparison and licensing review are available; PyMuPDF remains a local comparison candidate only."
+  }
+}
