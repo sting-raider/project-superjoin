@@ -364,7 +364,16 @@ def _model_claim_grounded(item: dict[str, Any], candidates: list[dict[str, Any]]
         return False
     # Page text is authoritative when supplied. A hint cannot bypass a page
     # mismatch, nor can a coincidentally shared scalar ground a quotation.
-    sources = source_pages or [candidate.get("evidence") or {} for candidate in candidates]
+    if source_pages:
+        grouped: dict[Any, list[str]] = {}
+        for source in source_pages:
+            grouped.setdefault(source.get("pdf_page"), []).append(str(source.get("text") or ""))
+        sources = [
+            {"pdf_page": page, "text": " ".join(parts)}
+            for page, parts in grouped.items()
+        ]
+    else:
+        sources = [candidate.get("evidence") or {} for candidate in candidates]
     matching = [
         source for source in sources
         if evidence_text in " ".join(str(source.get("text") or "").split()).casefold()
