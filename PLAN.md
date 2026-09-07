@@ -134,6 +134,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   `needs_review` until a reviewer confirms them. Deterministic entity and
   predicate registration also updates the latest interpretation statuses to
   `resolved`; these behaviors have direct SQLite regression coverage.
+- Structured extraction responses now pass a Pydantic envelope contract. A
+  malformed first response receives exactly one separately fingerprinted,
+  budgeted corrective request; malformed repair output falls back to the
+  deterministic candidates and remains visible in model-call/cache telemetry.
+  Visual responses use the same envelope validation before their evidence is
+  marked visual-region and routed through the Trust Gate review boundary.
 
 ### Resolved implementation simplifications
 

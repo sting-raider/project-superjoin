@@ -1,4 +1,9 @@
-from app.pipeline import _claim_id
+from pathlib import Path
+
+from app.config import settings
+from app.db import db, init_db
+from app.pipeline import _claim_id, _model_extract
+from app.providers import ProviderResult
 
 
 def test_claim_identity_is_stable_and_workspace_scoped() -> None:
@@ -9,3 +14,32 @@ def test_claim_identity_is_stable_and_workspace_scoped() -> None:
     other_workspace = _claim_id("delhivery", "doc-a", item, evidence)
     assert first == second
     assert first != other_workspace
+
+
+def test_malformed_extraction_gets_one_budgeted_repair(monkeypatch, tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "pipeline.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    calls = []
+    candidate = {"subject": "Delhivery", "predicate": "revenue", "raw_value": "100 million", "evidence": {"text": "Revenue was 100 million in FY24."}}
+    repaired_claim = {**candidate, "normalized_value": "100000000", "value_type": "money", "unit": "USD", "period": "FY24", "modality": "actual", "scope": "consolidated"}
+
+    def fake_chat(role, system, user, model=None, max_output_tokens=1200):
+        calls.append((role, system, user, model, max_output_tokens))
+        if len(calls) == 1:
+            return ProviderResult(data="malformed", model=model or "fake", estimated_cost=0.001)
+        return ProviderResult(data={"claims": [repaired_claim]}, model=model or "fake", estimated_cost=0.001)
+
+    try:
+        init_db()
+        monkeypatch.setattr("app.pipeline.structured_chat", fake_chat)
+        result = _model_extract([candidate], "source.pdf", None, [{"pdf_page": 1, "text": candidate["evidence"]["text"]}])
+        assert result == [repaired_claim]
+        assert len(calls) == 2
+        with db() as conn:
+            statuses = [row["status"] for row in conn.execute("SELECT status FROM model_calls ORDER BY created_at").fetchall()]
+        assert statuses == ["complete", "complete"]
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)

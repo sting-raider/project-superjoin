@@ -42,7 +42,7 @@ The assignment does not benefit from Neo4j, a graph UI, Redis/Celery, Kubernetes
 
 ## Provider boundary
 
-Extraction, reasoning, vision, and embeddings have independent model/base URL/key settings, timeout/output/concurrency controls, and capability metadata. The Settings API exposes only this nonsecret contract; credentials never leave the process. Document text is passed as explicitly delimited untrusted content; it never becomes a system instruction and cannot select a tool, endpoint, budget, or eligibility status. Responses are validated and budgeted before they can affect the claim pipeline. With no key, the seeded recorded dataset powers Demo Mode; with a configured endpoint, arbitrary PDFs can enter the same pipeline.
+Extraction, reasoning, vision, and embeddings have independent model/base URL/key settings, timeout/output/concurrency controls, and capability metadata. The Settings API exposes only this nonsecret contract; credentials never leave the process. Document text is passed as explicitly delimited untrusted content; it never becomes a system instruction and cannot select a tool, endpoint, budget, or eligibility status. Chat responses pass a Pydantic claims-envelope check; malformed extraction receives one corrective request under a new budget/cache fingerprint before deterministic fallback. Responses are validated and budgeted before they can affect the claim pipeline. With no key, the seeded recorded dataset powers Demo Mode; with a configured endpoint, arbitrary PDFs can enter the same pipeline.
 
 ## State and revision model
 
