@@ -440,9 +440,31 @@ def _export_cell(key: str, value: Any) -> Any:
 def cases() -> dict[str, Any]:
     if not settings.demo_mode:
         return {"items": []}
-    from .demo_data import DEMO_CASES
+    from .demo_data import DEMO_CASES, DEMO_RELATIONSHIPS
 
-    return {"items": DEMO_CASES}
+    items = [dict(item) for item in DEMO_CASES]
+    relationships = {item["id"]: item for item in DEMO_RELATIONSHIPS}
+    with db() as conn:
+        for item in items:
+            recorded = relationships.get(item.get("relationship_id"))
+            if not recorded:
+                continue
+            row = conn.execute(
+                """SELECT id FROM relationships
+                WHERE workspace_id=? AND relationship_type=?
+                  AND ((claim_a=? AND claim_b=?) OR (claim_a=? AND claim_b=?))
+                LIMIT 1""",
+                (
+                    recorded["workspace_id"],
+                    recorded["relationship_type"],
+                    recorded["claim_a"],
+                    recorded["claim_b"],
+                    recorded["claim_b"],
+                    recorded["claim_a"],
+                ),
+            ).fetchone()
+            item["relationship_id"] = row["id"] if row else None
+    return {"items": items}
 
 
 def _resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:

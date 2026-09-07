@@ -3,9 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 
+from .config import settings
 from .db import db, utc_now
 from .demo_data import DEMO_CASES, DEMO_CLAIMS, DEMO_DOCUMENTS, DEMO_RELATIONSHIPS, DEMO_WORKSPACES
-from .knowledge import rebuild_workspace
+from .knowledge import assess_relationships, rebuild_workspace, relationship_cache_fingerprint
 from .provenance import page_artifact_id, persist_anchor, persist_interpretation
 from .registry import register_workspace_claims
 
@@ -47,15 +48,54 @@ def seed_demo() -> None:
             anchor_id = persist_anchor(conn, claim["document_id"], evidence)
             conn.execute("INSERT OR IGNORE INTO claim_evidence(claim_id,anchor_id,purpose,created_at) VALUES(?,?,?,?)", (claim["id"], anchor_id, "assertion", created_at))
             persist_interpretation(conn, claim, claim["id"], created_at)
-        for relationship in DEMO_RELATIONSHIPS:
-            conn.execute(
-                """INSERT OR IGNORE INTO relationships
-                (id,workspace_id,claim_a,claim_b,relationship_type,reason,dimensions_json,confidence,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?)""",
-                (relationship["id"], relationship["workspace_id"], relationship["claim_a"], relationship["claim_b"], relationship["relationship_type"], relationship["reason"], json.dumps(relationship["dimensions"]), relationship["confidence"], utc_now()),
-            )
+        demo_claim_ids = [claim["id"] for claim in DEMO_CLAIMS]
+        placeholders = ",".join("?" for _ in demo_claim_ids)
+        conn.execute(
+            f"DELETE FROM relationships WHERE claim_a IN ({placeholders}) OR claim_b IN ({placeholders})",
+            (*demo_claim_ids, *demo_claim_ids),
+        )
         for case in DEMO_CASES:
             conn.execute("INSERT OR IGNORE INTO changes(id,workspace_id,run_id,kind,summary,details_json,created_at) VALUES(?,?,?,?,?,?,?)", (f"change-{case['id']}", case["workspace_id"], "demo-seed", "demo_case", case["title"], json.dumps(case), utc_now()))
     for workspace in DEMO_WORKSPACES:
         register_workspace_claims(workspace["id"])
+        _seed_recorded_reasoning_outputs(workspace["id"])
+        assess_relationships(workspace["id"])
         rebuild_workspace(workspace["id"], advance_revision=False)
+
+
+def _seed_recorded_reasoning_outputs(workspace_id: str) -> None:
+    """Load recorded semantic responses into the normal reasoning cache."""
+
+    with db() as conn:
+        for relationship in DEMO_RELATIONSHIPS:
+            if relationship["workspace_id"] != workspace_id:
+                continue
+            rows = [
+                conn.execute(
+                    "SELECT * FROM claims WHERE id=? AND workspace_id=?",
+                    (claim_id, workspace_id),
+                ).fetchone()
+                for claim_id in (relationship["claim_a"], relationship["claim_b"])
+            ]
+            if any(row is None for row in rows):
+                continue
+            left, right = sorted((dict(rows[0]), dict(rows[1])), key=lambda item: item["id"])
+            response = {
+                "relationship_type": relationship["relationship_type"],
+                "reason": relationship["reason"],
+                "dimensions": relationship["dimensions"],
+                "confidence": relationship["confidence"],
+                "evidence_claim_ids": [left["id"], right["id"]],
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)",
+                (
+                    f"demo-reasoning-{relationship['id']}",
+                    "reasoning",
+                    settings.reasoning_model,
+                    relationship_cache_fingerprint(left, right),
+                    json.dumps(response, ensure_ascii=False),
+                    0.0,
+                    utc_now(),
+                ),
+            )

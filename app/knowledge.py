@@ -12,6 +12,19 @@ from .normalization import compare_numeric
 from .providers import ProviderError, available, input_hash, structured_chat
 from .security import untrusted_document_block
 
+_CONTEXTUAL_RELATIONSHIP_MARKERS = (
+    "advance estimate",
+    "assumption",
+    "baseline",
+    "forecast",
+    "guidance",
+    "preliminary",
+    "projected",
+    "revised",
+    "scenario",
+    "vintage",
+)
+
 
 def _id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
@@ -70,11 +83,12 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
                 if (claim_a["id"], claim_b["id"]) in existing_pairs:
                     continue
                 relationship_type, reason, dimensions, confidence = compare_claim_pair(claim_a, claim_b)
-                if relationship_type == "UNRELATED":
+                if relationship_type == "UNRELATED" or _needs_semantic_relationship_review(claim_a, claim_b, relationship_type):
                     semantic = _semantic_relationship(claim_a, claim_b, run_id)
-                    if semantic is None:
+                    if semantic is None and relationship_type == "UNRELATED":
                         continue
-                    relationship_type, reason, dimensions, confidence = semantic
+                    if semantic is not None:
+                        relationship_type, reason, dimensions, confidence = semantic
                 relationship_id = "rel-" + hashlib.sha256(f"{claim_a['id']}:{claim_b['id']}:{relationship_type}".encode()).hexdigest()[:16]
                 with db() as conn:
                     conn.execute("DELETE FROM relationships WHERE claim_a=? AND claim_b=?", (claim_a["id"], claim_b["id"]))
@@ -91,14 +105,7 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
 def _semantic_relationship(a: Any, b: Any, run_id: str | None) -> tuple[str, str, dict[str, Any], float] | None:
     """Ask the optional reasoning role only for deterministic abstentions."""
 
-    if not available("reasoning"):
-        return None
-    payload = {
-        "claim_a": {key: a[key] for key in ("id", "subject", "predicate", "raw_value", "normalized_value", "value_type", "unit", "period", "modality", "scope", "evidence_json")},
-        "claim_b": {key: b[key] for key in ("id", "subject", "predicate", "raw_value", "normalized_value", "value_type", "unit", "period", "modality", "scope", "evidence_json")},
-    }
-    compact = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    digest = input_hash("relationship-v1", compact)
+    digest = relationship_cache_fingerprint(a, b)
     model = settings.reasoning_model
     with db() as conn:
         cached = conn.execute("SELECT response_json FROM model_cache WHERE role=? AND model=? AND input_hash=?", ("reasoning", model, digest)).fetchone()
@@ -108,6 +115,10 @@ def _semantic_relationship(a: Any, b: Any, run_id: str | None) -> tuple[str, str
             return _validated_semantic_result(parsed, a["id"], b["id"])
         except json.JSONDecodeError:
             return None
+    if not available("reasoning"):
+        return None
+    payload = _relationship_payload(a, b)
+    compact = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     reservation = None
     try:
         reservation = reserve(run_id, "reasoning", model, digest, estimate_cost(len(compact) + 1200, settings.reasoning_max_output_tokens))
@@ -128,6 +139,45 @@ def _semantic_relationship(a: Any, b: Any, run_id: str | None) -> tuple[str, str
     with db() as conn:
         conn.execute("INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)", (f"cache-{uuid.uuid4().hex[:12]}", "reasoning", result.model, digest, json.dumps(result.data, ensure_ascii=False), result.estimated_cost, utc_now()))
     return _validated_semantic_result(result.data, a["id"], b["id"])
+
+
+def _relationship_payload(a: Any, b: Any) -> dict[str, Any]:
+    fields = ("id", "subject", "predicate", "raw_value", "normalized_value", "value_type", "unit", "period", "modality", "scope", "evidence_json")
+    return {
+        "claim_a": {key: a[key] for key in fields},
+        "claim_b": {key: b[key] for key in fields},
+    }
+
+
+def relationship_cache_fingerprint(a: Any, b: Any) -> str:
+    """Return the stable replay/cache key for one ordered claim pair."""
+
+    left, right = sorted((a, b), key=lambda item: item["id"])
+    compact = json.dumps(_relationship_payload(left, right), ensure_ascii=False, sort_keys=True)
+    return input_hash("relationship-v1", compact)
+
+
+def _needs_semantic_relationship_review(a: Any, b: Any, relationship_type: str) -> bool:
+    if relationship_type != "CONTRADICTS":
+        return False
+    if a["value_type"] == "semantic" or b["value_type"] == "semantic":
+        return True
+    evidence_parts = [
+        str(item.get("text") or "")
+        for claim in (a, b)
+        for item in _evidence_items(claim.get("evidence_json"))
+    ]
+    evidence = " ".join(evidence_parts).casefold()
+    return any(marker in evidence for marker in _CONTEXTUAL_RELATIONSHIP_MARKERS)
+
+
+def _evidence_items(value: Any) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(value or "[]") if isinstance(value, str) else value
+    except json.JSONDecodeError:
+        return []
+    items = parsed if isinstance(parsed, list) else [parsed]
+    return [item for item in items if isinstance(item, dict)]
 
 
 def _validated_semantic_result(data: Any, claim_a: str, claim_b: str) -> tuple[str, str, dict[str, Any], float] | None:
