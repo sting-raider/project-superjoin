@@ -113,6 +113,8 @@ def candidate_claims(page: ParsedPage) -> list[dict[str, Any]]:
                 "normalized_value": parsed.get("normalized"),
                 "value_type": parsed.get("value_type", "text"),
                 "unit": parsed.get("unit") or parsed.get("currency"),
+                "precision": parsed.get("precision"),
+                "normalization_trace": parsed.get("trace", []),
                 "period": parse_period(excerpt),
                 "modality": infer_modality(excerpt),
                 "scope": "consolidated" if "consolidated" in excerpt.lower() else None,

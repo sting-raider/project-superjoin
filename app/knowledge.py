@@ -134,7 +134,7 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
     if dimensions["subject"] != "MATCH" or dimensions["predicate"] != "MATCH":
         return "UNRELATED", "Different subject or predicate.", dimensions, 0.88
     if a["value_type"] in {"money", "number", "percentage"} and b["value_type"] in {"money", "number", "percentage"}:
-        dimensions["value"] = compare_numeric(a["normalized_value"], b["normalized_value"])
+        dimensions["value"] = compare_numeric(a["normalized_value"], b["normalized_value"], a.get("precision"), b.get("precision"))
     elif a["normalized_value"] == b["normalized_value"]:
         dimensions["value"] = "equal"
     if a["period"] != b["period"]:

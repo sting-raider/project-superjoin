@@ -218,9 +218,9 @@ def _insert_claims(workspace_id: str, document_id: str, candidates: list[dict[st
             extraction_status = "quarantined" if suspicious or not evidence else "accepted"
             conn.execute(
                 """INSERT INTO claims
-                (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,grounding_status,extraction_status,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (claim_id, workspace_id, document_id, str(item.get("subject") or "Document subject"), str(item.get("predicate") or "unknown_predicate"), str(item.get("raw_value") or ""), _json_value(item.get("normalized_value")), str(item.get("value_type") or "text"), item.get("unit"), item.get("period"), item.get("modality"), item.get("scope"), json.dumps(evidence), grounding_status, extraction_status, created_at),
+                (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,precision,period,modality,scope,evidence_json,grounding_status,extraction_status,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (claim_id, workspace_id, document_id, str(item.get("subject") or "Document subject"), str(item.get("predicate") or "unknown_predicate"), str(item.get("raw_value") or ""), _json_value(item.get("normalized_value")), str(item.get("value_type") or "text"), item.get("unit"), item.get("precision"), item.get("period"), item.get("modality"), item.get("scope"), json.dumps(evidence), grounding_status, extraction_status, created_at),
             )
             conn.execute("INSERT INTO claims_fts(claim_id,workspace_id,subject,predicate,raw_value,period,modality,scope) VALUES(?,?,?,?,?,?,?,?)", (claim_id, workspace_id, item.get("subject", ""), item.get("predicate", ""), item.get("raw_value", ""), item.get("period") or "", item.get("modality") or "", item.get("scope") or ""))
             if evidence:

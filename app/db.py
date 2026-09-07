@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS claims (
   normalized_value TEXT,
   value_type TEXT NOT NULL DEFAULT 'text',
   unit TEXT,
+  precision INTEGER,
   period TEXT,
   modality TEXT,
   scope TEXT,
@@ -388,6 +389,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "reserved_usd": "REAL NOT NULL DEFAULT 0",
             "cache_hit": "INTEGER NOT NULL DEFAULT 0",
         },
+        "claims": {"precision": "INTEGER"},
         "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'", "document_id": "TEXT"},
         "reviews": {
             "status": "TEXT NOT NULL DEFAULT 'active'",

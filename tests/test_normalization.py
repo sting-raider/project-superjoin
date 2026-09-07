@@ -28,6 +28,8 @@ def test_fiscal_periods_are_stable() -> None:
 def test_rounding_comparison_is_explicit() -> None:
     assert compare_numeric("81415380000", "81420000000", 2, 0) == "rounding-compatible"
     assert compare_numeric("0.064", "0.065", 3, 3) == "different"
+    assert compare_numeric("0.064", "0.065") == "different"
+    assert compare_numeric("100", "110") == "different"
 
 
 def test_percentage_points_and_basis_points_keep_distinct_semantics() -> None:

@@ -175,8 +175,12 @@ def compare_numeric(a: str | None, b: str | None, precision_a: int | None = None
     # fact in base currency.  Treat positive precision values as significant
     # digit hints and compare the resulting values proportionally.  This keeps
     # large-unit rounding compatible without making small percentages fuzzy.
-    precisions = [p for p in (precision_a, precision_b) if p and p > 0]
-    significant_places = max(precisions, default=0)
-    scale = max(abs(left), abs(right), Decimal(1))
-    tolerance = scale * (Decimal(10) ** -significant_places) / 2
+    precisions = [p for p in (precision_a, precision_b) if p is not None and p >= 0]
+    if precisions:
+        scale = max(abs(left), abs(right), Decimal(1))
+        significant_places = max(precisions)
+        tolerance = scale * (Decimal(10) ** -significant_places) / 2
+    else:
+        scale = max(abs(left), abs(right))
+        tolerance = Decimal("0.0005") if scale <= 1 else Decimal("0.5")
     return "rounding-compatible" if abs(left - right) <= tolerance else "different"
