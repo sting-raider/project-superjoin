@@ -149,6 +149,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   detail, fact history, and JSON/CSV/XLSX fact exports. Formula-like source
   strings are neutralized in tabular exports while normalized decimal strings
   remain machine-readable.
+- Demo Mode now replays recorded semantic relationship responses through the
+  same cache fingerprint, relationship assessor, and canonical fact publisher
+  used by live workspaces. The seeder no longer inserts relationship rows;
+  generated relationship IDs are mapped to required-case bookmarks only at the
+  demo API boundary. A clean-database regression covers all four relationship
+  outcomes.
 - Reported decimal precision is now persisted on extracted claims and used by
   deterministic relationship comparison. A live SQLite regression covers the
   crore/million rounding case, aggregates both evidence records through the
