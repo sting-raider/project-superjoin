@@ -2,15 +2,18 @@ from pathlib import Path
 
 from app.config import settings
 from app.db import db, init_db, utc_now
-from app.parser import ParsedPage
+from app.parser import ParsedDocument, ParsedPage
 from app.pipeline import (
     ExtractionBatch,
     _claim_id,
     _deterministically_normalized,
     _extract_document_batches,
+    _insert_claims,
     _model_extract,
+    _RunCancelled,
     _vision_extract_page,
     build_extraction_batches,
+    process_document,
 )
 from app.providers import ProviderResult
 
@@ -156,3 +159,88 @@ def test_no_key_visual_fallback_does_not_render(monkeypatch) -> None:
 
     monkeypatch.setattr("app.pipeline._render_page", render_must_not_run)
     assert _vision_extract_page(b"pdf", 0, "source.pdf", "run") == []
+
+
+def test_cancelled_run_cannot_publish_claims(tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "cancel.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    claim = {
+        "subject": "Nimbus Cloud",
+        "predicate": "annual_recurring_revenue",
+        "raw_value": "$42 million",
+        "value_type": "money",
+        "unit": "USD",
+        "evidence": {"pdf_page": 1, "text": "ARR reached $42 million."},
+    }
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute(
+                "INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)",
+                ("d", "w", "source.pdf", "hash", "processing", now),
+            )
+            conn.execute(
+                "INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("r", "w", "d", "live", "cancel_requested", 50, "Cancellation requested", now, now),
+            )
+        try:
+            _insert_claims("w", "d", "r", [claim])
+        except _RunCancelled:
+            pass
+        else:
+            raise AssertionError("cancelled publication unexpectedly succeeded")
+        with db() as conn:
+            assert conn.execute("SELECT COUNT(*) AS n FROM claims").fetchone()["n"] == 0
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_cancellation_during_extraction_stops_before_publication(monkeypatch, tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "cancel-extract.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    parsed = ParsedDocument(
+        pages=[ParsedPage(0, 1000, 1000, "ARR reached $42 million.", [], 0.95, [])],
+        sha256="hash",
+        parser="test-parser",
+        parser_version="1",
+    )
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute(
+                "INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)",
+                ("d", "w", "source.pdf", "hash", "queued", now),
+            )
+            conn.execute(
+                "INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("r", "w", "d", "live", "queued", 0, "Queued", now, now),
+            )
+        monkeypatch.setattr("app.pipeline.parse_pdf", lambda data: parsed)
+        monkeypatch.setattr("app.pipeline.available", lambda role=None: role == "extraction")
+
+        def cancel_after_extraction(*args, **kwargs):
+            with db() as conn:
+                conn.execute("UPDATE runs SET status='cancel_requested' WHERE id='r'")
+            return []
+
+        monkeypatch.setattr("app.pipeline._model_extract", cancel_after_extraction)
+        process_document("r", "d", "w", b"%PDF-test", "source.pdf")
+        with db() as conn:
+            run = conn.execute("SELECT status FROM runs WHERE id='r'").fetchone()
+            document = conn.execute("SELECT status FROM documents WHERE id='d'").fetchone()
+            claims = conn.execute("SELECT COUNT(*) AS n FROM claims WHERE document_id='d'").fetchone()
+        assert run["status"] == "cancelled"
+        assert document["status"] == "cancelled"
+        assert claims["n"] == 0
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)

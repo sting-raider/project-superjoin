@@ -29,6 +29,10 @@ class _ClaimEnvelope(BaseModel):
     claims: list[dict[str, Any]]
 
 
+class _RunCancelled(Exception):
+    """Internal signal used to stop work before knowledge publication."""
+
+
 @dataclass(frozen=True)
 class ExtractionBatch:
     index: int
@@ -53,17 +57,17 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
     try:
         started_at = utc_now()
         _update_run(run_id, 5, "Parsing PDF pages", status="processing")
+        _raise_if_cancelled(run_id)
         parsed = parse_pdf(data)
         if len(parsed.pages) > settings.max_pdf_pages:
             raise ValueError(f"PDF exceeds the {settings.max_pdf_pages}-page limit")
         _update_document(document_id, page_count=len(parsed.pages), parser=parsed.parser, quality_score=sum(p.quality_score for p in parsed.pages) / max(len(parsed.pages), 1), status="processing")
         _persist_pages(document_id, parsed)
         _update_run(run_id, 24, f"Parsed {len(parsed.pages)} pages")
-        if _run_cancelled(run_id):
-            _cancel_run(document_id, run_id)
-            return
+        _raise_if_cancelled(run_id)
         all_candidates: list[dict[str, Any]] = []
         for page in parsed.pages:
+            _raise_if_cancelled(run_id)
             all_candidates.extend(candidate_claims(page))
             if "low-native-text" in page.flags or "no-word-geometry" in page.flags:
                 visual = _vision_extract_page(data, page.index, filename, run_id)
@@ -73,8 +77,10 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
             all_candidates = _extract_document_batches(
                 batches, filename, run_id, document_id
             )
+        _raise_if_cancelled(run_id)
         _update_run(run_id, 60, f"Grounding {len(all_candidates)} candidate claims")
-        inserted = _insert_claims(workspace_id, document_id, all_candidates)
+        inserted = _insert_claims(workspace_id, document_id, run_id, all_candidates)
+        _raise_if_cancelled(run_id)
         register_workspace_claims(workspace_id, run_id)
         _update_run(run_id, 78, "Resolving relationships")
         _resolve_workspace(workspace_id, run_id)
@@ -82,6 +88,8 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         _update_run(run_id, 94, f"Published {inserted} grounded claims")
         _update_document(document_id, status="complete")
         _update_run(run_id, 100, "Complete", status="complete")
+    except _RunCancelled:
+        _cancel_run(document_id, run_id)
     except Exception as exc:  # noqa: BLE001 - persist every failed run for inspection
         _update_document(document_id, status="failed")
         _update_run(run_id, 100, f"Failed: {exc}", status="failed")
@@ -152,6 +160,7 @@ def _extract_document_batches(
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="extract") as executor:
         futures = {}
         for batch in batches:
+            _raise_if_cancelled(run_id)
             batch_payload = {
                 "pages": batch.pages,
                 "candidates": batch.candidates,
@@ -171,6 +180,7 @@ def _extract_document_batches(
             )
             futures[future] = (batch, digest)
         for future in as_completed(futures):
+            _raise_if_cancelled(run_id)
             batch, digest = futures[future]
             try:
                 claims = future.result()
@@ -476,9 +486,16 @@ def _render_page(pdf_bytes: bytes, page_index: int) -> bytes | None:
             document.close()
 
 
-def _insert_claims(workspace_id: str, document_id: str, candidates: list[dict[str, Any]]) -> int:
+def _insert_claims(workspace_id: str, document_id: str, run_id: str, candidates: list[dict[str, Any]]) -> int:
     inserted = 0
     with db() as conn:
+        # Keep the status check and all claim/evidence writes in one SQLite
+        # transaction. A cancellation arriving during this short publication
+        # window waits for the transaction and is applied to the completed run.
+        conn.execute("BEGIN IMMEDIATE")
+        status = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if status and status["status"] in {"cancel_requested", "cancelled"}:
+            raise _RunCancelled
         for item in candidates:
             item = _deterministically_normalized(item)
             evidence = item.get("evidence") or {}
@@ -593,6 +610,11 @@ def _run_cancelled(run_id: str) -> bool:
     with db() as conn:
         row = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
     return bool(row and row["status"] in {"cancel_requested", "cancelled"})
+
+
+def _raise_if_cancelled(run_id: str) -> None:
+    if _run_cancelled(run_id):
+        raise _RunCancelled
 
 
 def _cancel_run(document_id: str, run_id: str) -> None:
