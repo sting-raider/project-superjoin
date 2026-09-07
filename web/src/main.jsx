@@ -34,6 +34,7 @@ function App() {
   const [documents, setDocuments] = useState([])
   const [changes, setChanges] = useState([])
   const [reviews, setReviews] = useState([])
+  const [runs, setRuns] = useState([])
   const [selectedFact, setSelectedFact] = useState(null)
   const [selectedCase, setSelectedCase] = useState(null)
   const [section, setSection] = useState('overview')
@@ -44,13 +45,13 @@ function App() {
   const refresh = async (id = workspace) => {
     setLoading(true)
     try {
-      const [nextOverview, nextFacts, nextCases, nextRelationships, nextDocuments, nextChanges, nextReviews] = await Promise.all([
+      const [nextOverview, nextFacts, nextCases, nextRelationships, nextDocuments, nextChanges, nextReviews, nextRuns] = await Promise.all([
         get(`/overview?workspace_id=${id}`), get(`/facts?workspace_id=${id}&limit=200`), get('/cases'),
         get(`/relationships?workspace_id=${id}`), get(`/documents?workspace_id=${id}`),
-        get(`/changes?workspace_id=${id}`), get(`/reviews?workspace_id=${id}`),
+        get(`/changes?workspace_id=${id}`), get(`/reviews?workspace_id=${id}`), get(`/runs?workspace_id=${id}`),
       ])
       setOverview(nextOverview); setFacts(nextFacts.items); setCases(nextCases.items)
-      setRelationships(nextRelationships.items); setDocuments(nextDocuments.items); setChanges(nextChanges.items); setReviews(nextReviews.items)
+      setRelationships(nextRelationships.items); setDocuments(nextDocuments.items); setChanges(nextChanges.items); setReviews(nextReviews.items); setRuns(nextRuns.items)
     } catch (error) { setNotice(error.message) } finally { setLoading(false) }
   }
 
@@ -98,7 +99,7 @@ function App() {
       <div className="brand"><div className="brand-mark">⌘</div><div><strong>Project SuperJoin</strong><small>Evidence workspace</small></div></div>
       <div className="workspace-picker"><label>WORKSPACE</label><select value={workspace} onChange={(event) => setWorkspace(event.target.value)}>{workspaces.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div>
       <nav>
-        {[['overview', 'Overview', '⌂'], ['facts', 'Facts', '▦'], ['documents', 'Documents', '▤'], ['cases', 'Required cases', '◈'], ['changes', 'Knowledge Diff', '↻'], ['review', 'Review', '✓'], ['trust', 'Trust Gate', '⊙'], ['settings', 'Settings', '⚙']].map(([key, label, icon]) => <button data-case-nav={key === 'cases' ? 'true' : undefined} className={section === key ? 'nav-item active' : 'nav-item'} onClick={() => setSection(key)} key={key}><span>{icon}</span>{label}{key === 'cases' && <em>4</em>}</button>)}
+        {[['overview', 'Overview', '⌂'], ['facts', 'Facts', '▦'], ['documents', 'Documents', '▤'], ['cases', 'Required cases', '◈'], ['changes', 'Knowledge Diff', '↻'], ['runs', 'Runs', '▷'], ['review', 'Review', '✓'], ['trust', 'Trust Gate', '⊙'], ['settings', 'Settings', '⚙']].map(([key, label, icon]) => <button data-case-nav={key === 'cases' ? 'true' : undefined} className={section === key ? 'nav-item active' : 'nav-item'} onClick={() => setSection(key)} key={key}><span>{icon}</span>{label}{key === 'cases' && <em>4</em>}</button>)}
       </nav>
       <div className="sidebar-foot"><Badge tone="good">● Demo mode</Badge><p>Recorded model outputs are available without an API key.</p><button className="text-button" onClick={resetDemo}>Reset demo workspace</button></div>
     </aside>
@@ -111,6 +112,7 @@ function App() {
         {section === 'documents' && <Documents documents={documents} onUpload={onUpload} />}
         {section === 'cases' && <Cases cases={cases} relationships={relationships} selectedCase={selectedCase} onSelect={selectCase} />}
         {section === 'changes' && <Changes overview={overview} changes={changes} />}
+        {section === 'runs' && <Runs runs={runs} />}
         {section === 'review' && <Review workspace={workspace} reviews={reviews} facts={facts} onRefresh={() => refresh()} />}
         {section === 'trust' && <TrustGate workspace={workspace} />}
         {section === 'settings' && <Settings />}
@@ -140,6 +142,10 @@ function Cases({ cases, relationships, selectedCase, onSelect }) {
 
 function Changes({ overview, changes }) {
   return <div className="content"><div className="section-heading"><div><span className="eyebrow">REVISION HISTORY</span><h2>Knowledge Diff</h2><p>Changes are attached to a source, a run, or a review decision.</p></div></div><div className="panel diff-detail"><div className="diff-banner"><span className="revision-dot">●</span><div><strong>Committed knowledge revision</strong><span>Project SuperJoin revision {overview?.workspace?.active_revision || 1} · {changes.length} recorded changes</span></div></div>{changes.length ? changes.map((change) => <div className="change-line" key={change.id}><span className={`change-symbol ${change.kind.includes('conflict') ? 'conflict' : change.kind.includes('reconcile') ? 'reconcile' : 'plus'}`}>{change.kind.includes('conflict') ? '!' : change.kind.includes('reconcile') ? '↻' : '＋'}</span><div><strong>{change.summary}</strong><small>{change.kind} · {change.run_id || 'recorded'}</small></div><b>view</b></div>) : <div className="empty">No changes recorded for this workspace.</div>}</div></div>
+}
+
+function Runs({ runs }) {
+  return <div className="content"><div className="section-heading"><div><span className="eyebrow">OBSERVABILITY</span><h2>Runs</h2><p>Durable parser, extraction, and publication progress for this workspace.</p></div></div><div className="panel run-list">{runs.length ? runs.map((run) => <div className="run-row" key={run.id}><div><strong>{run.mode} · {run.id}</strong><small>{run.message || 'Queued'} · updated {run.updated_at}</small></div><div className="run-progress"><Badge tone={run.status === 'complete' ? 'good' : run.status === 'failed' ? 'bad' : 'warn'}>{run.status}</Badge><span>{run.progress}%</span><i><b style={{ width: `${run.progress || 0}%` }} /></i></div></div>) : <div className="empty">No runs recorded for this workspace yet.</div>}</div></div>
 }
 
 function Settings() {

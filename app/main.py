@@ -176,6 +176,13 @@ def run(run_id: str) -> dict[str, Any]:
     return item
 
 
+@app.get("/api/v1/runs")
+def runs(workspace_id: str = "delhivery", limit: int = 50) -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM runs WHERE workspace_id=? ORDER BY created_at DESC LIMIT ?", (workspace_id, max(1, min(limit, 200)))).fetchall()
+    return {"items": rows_to_dicts(rows)}
+
+
 @app.get("/api/v1/runs/{run_id}/events/history")
 def run_event_history(run_id: str, after_id: int = 0) -> dict[str, Any]:
     with db() as conn:

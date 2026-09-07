@@ -170,6 +170,10 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   limit, so an oversized request is rejected before it is retained or parsed;
   the existing content-signature and workspace-scoped deduplication checks
   remain in place. The API suite covers workspace creation and conflict.
+- Durable run listing is now exposed at `/api/v1/runs` and in a dedicated
+  Superjoin-inspired Runs screen with status, progress, message, and update
+  timestamps. The UI refreshes it with the selected workspace so parser and
+  publication activity is inspectable without opening developer tools.
 
 ### Resolved implementation simplifications
 

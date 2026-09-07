@@ -1,4 +1,5 @@
 import os
+import uuid
 from pathlib import Path
 
 os.environ["DATABASE_PATH"] = str(Path("tmp") / "test-api.sqlite3")
@@ -132,8 +133,16 @@ def test_document_archive_and_reactivate_are_auditable() -> None:
 
 def test_workspace_create_slugifies_and_rejects_duplicate() -> None:
     with TestClient(app) as client:
-        created = client.post("/api/v1/workspaces", json={"name": "New Advisory Corpus", "description": "test"})
+        name = f"New Advisory Corpus {uuid.uuid4().hex[:8]}"
+        created = client.post("/api/v1/workspaces", json={"name": name, "description": "test"})
         assert created.status_code == 201
-        assert created.json()["id"] == "new-advisory-corpus"
-        duplicate = client.post("/api/v1/workspaces", json={"name": "New Advisory Corpus"})
+        assert created.json()["id"].startswith("new-advisory-corpus-")
+        duplicate = client.post("/api/v1/workspaces", json={"name": name})
         assert duplicate.status_code == 409
+
+
+def test_runs_surface_is_available_for_observability() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/runs", params={"workspace_id": "delhivery"})
+        assert response.status_code == 200
+        assert isinstance(response.json()["items"], list)
