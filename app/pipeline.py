@@ -28,7 +28,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         parsed = parse_pdf(data)
         if len(parsed.pages) > settings.max_pdf_pages:
             raise ValueError(f"PDF exceeds the {settings.max_pdf_pages}-page limit")
-        _update_document(document_id, page_count=len(parsed.pages), parser=parsed.parser, quality=sum(p.quality_score for p in parsed.pages) / max(len(parsed.pages), 1), status="processing")
+        _update_document(document_id, page_count=len(parsed.pages), parser=parsed.parser, quality_score=sum(p.quality_score for p in parsed.pages) / max(len(parsed.pages), 1), status="processing")
         _persist_pages(document_id, parsed)
         _update_run(run_id, 24, f"Parsed {len(parsed.pages)} pages")
         if _run_cancelled(run_id):
