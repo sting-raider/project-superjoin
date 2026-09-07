@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from app.demo_data import (
@@ -91,3 +95,32 @@ def test_production_reasoning_is_starter_corpus_blind() -> None:
                         derived.add(nested.strip().casefold())
     leaked_derived = sorted(marker for marker in derived if marker in production)
     assert not leaked_derived, f"production source contains recorded demo metadata: {leaked_derived}"
+
+
+def test_live_app_initializes_without_demo_artifact_modules(tmp_path: Path) -> None:
+    root = Path(__file__).parents[1]
+    live_root = tmp_path / "live-copy"
+    shutil.copytree(
+        root / "app",
+        live_root / "app",
+        ignore=shutil.ignore_patterns("demo_data.py", "seed.py", "__pycache__"),
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONPATH": str(live_root),
+            "DEMO_MODE": "false",
+            "DATABASE_PATH": str(tmp_path / "live.sqlite3"),
+            "UPLOAD_DIR": str(tmp_path / "uploads"),
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", "from app.main import app; from app.db import init_db; init_db(); print(app.title)"],
+        cwd=live_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Project SuperJoin" in result.stdout
