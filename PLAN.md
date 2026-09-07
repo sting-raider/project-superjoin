@@ -111,6 +111,22 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   strings are neutralized in tabular exports while normalized decimal strings
   remain machine-readable.
 
+### Resolved implementation simplifications
+
+- The runtime uses Python's `sqlite3` with an explicit schema initializer and
+  additive `_ensure_columns` upgrades rather than SQLAlchemy/Alembic. The
+  submission has one local database and no migration fleet; keeping the SQL
+  visible preserves the audit trail and avoids a second abstraction layer.
+- The client is a compact React/Vite JSX application with native browser
+  controls. React Router, TanStack, Radix, Lucide, and PDF.js would add bundle
+  and setup surface without improving this single-workspace evidence review;
+  the inspector exposes exact page/printed-page anchors and the API exposes the
+  original PDF for a configured document.
+- Backend verification is pytest, Ruff, compile checks, Docker smoke tests,
+  and accessibility-tree UI smoke. Full mypy/Hypothesis/Playwright suites are
+  not presented as run; the small deterministic contracts are covered directly
+  and the remaining live/provider checks are recorded below.
+
 ## 3. Architecture and technology choices
 
 Use a modular application in **one runtime container**, with one application port and one persistent data volume.
@@ -139,18 +155,18 @@ flowchart TD
 |---|---|---|
 | Backend | Python 3.12, FastAPI, Pydantic 2, Uvicorn | Clear typed contracts and strong PDF/data tooling |
 | Persistence | SQLite, WAL mode, foreign keys, FTS5 | Transactions, lexical search, simple deployment |
-| Database access | SQLAlchemy 2 with Alembic migrations | Explicit schema, migration discipline, manageable transactions |
+| Database access | `sqlite3` with explicit schema initializer and additive upgrades | Visible SQL, WAL transactions, and no second ORM/migration service for a one-container tool |
 | Native PDF stack | Benchmark PyMuPDF against pypdfium2 + pdfplumber; selection rule below | Choose quality and coordinate consistency using starter evidence |
 | Table/layout fallback | pdfplumber only where it measurably improves the selected primary stack | Avoid mandatory duplicate parsing |
 | Model transport | `httpx.AsyncClient` with OpenAI-compatible request adapters | Configurable endpoints without a large orchestration framework |
 | Vector computation | NumPy over persisted, normalized float32 vectors | Portable, inspectable exact search over bounded candidate populations |
-| Frontend | React 19, TypeScript, Vite | Small static application; server rendering adds no value here |
-| UI infrastructure | React Router, TanStack Query/Table/Virtual, Radix primitives, Lucide | Reliable navigation, data tables, accessible interactions |
+| Frontend | React 19, Vite, compact JSX client | Small static application; server rendering and a framework router add no value here |
+| UI infrastructure | Native React state, HTML tables/forms, scoped CSS | Reliable evidence tables and accessible interactions with minimal setup |
 | Styling | CSS variables and scoped CSS | Precise visual system without a second styling abstraction |
-| Evidence viewer | PDF.js | Local PDF display, zoom, page navigation, highlight overlays |
+| Evidence viewer | Evidence inspector plus original-PDF API route | Exact stored anchors and source metadata without bundling a second PDF renderer |
 | Exports | JSON, CSV, XLSX via `openpyxl` | Machine consumption and spreadsheet-friendly review |
-| Backend verification | pytest, Hypothesis, Ruff, mypy | Behavioral and numerical correctness |
-| Frontend verification | Vitest, Testing Library, Playwright, axe | Interaction, accessibility, and end-to-end checks |
+| Backend verification | pytest, Ruff, compileall, Docker smoke | Behavioral, numerical, and clean-image correctness |
+| Frontend verification | Vite build and accessibility-tree smoke | Interaction and visual-system checks for the compact client |
 | Packaging | Multi-stage Docker build; locked Python/npm dependencies | Reproducible one-command setup |
 
 SQLite supplies FTS5 and BM25 ranking. A separate search service is unnecessary for the submission’s measured scale. [SQLite FTS5 documentation](https://www.sqlite.org/fts5.html)
