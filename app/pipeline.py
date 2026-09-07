@@ -118,8 +118,9 @@ def _persist_pages(document_id: str, parsed: Any) -> None:
 
 
 def _resolve_workspace(workspace_id: str, run_id: str) -> None:
-    from .knowledge import rebuild_workspace
+    from .knowledge import assess_relationships, rebuild_workspace
 
+    assess_relationships(workspace_id, run_id)
     rebuild_workspace(workspace_id, run_id)
 
 

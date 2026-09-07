@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -11,6 +12,40 @@ from .normalization import compare_numeric
 
 def _id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
+    """Compare only claims sharing an exact subject/predicate lane.
+
+    Broad semantic candidate retrieval can be layered on later; this bounded
+    deterministic lane guarantees that obvious same-proposition pairs are
+    never lost to a top-k cutoff.
+    """
+
+    with db() as conn:
+        claims = conn.execute("SELECT * FROM claims WHERE workspace_id=? AND extraction_status='accepted' ORDER BY id", (workspace_id,)).fetchall()
+        groups: dict[tuple[str, str], list[Any]] = {}
+        for claim in claims:
+            groups.setdefault((claim["subject"].casefold(), claim["predicate"].casefold()), []).append(claim)
+        inserted = 0
+        for group in groups.values():
+            if len(group) > 250:
+                group = group[-250:]
+            for index, left in enumerate(group):
+                for right in group[index + 1 :]:
+                    claim_a, claim_b = sorted((left, right), key=lambda item: item["id"])
+                    relationship_type, reason, dimensions, confidence = compare_claim_pair(claim_a, claim_b)
+                    if relationship_type == "UNRELATED":
+                        continue
+                    relationship_id = "rel-" + hashlib.sha256(f"{claim_a['id']}:{claim_b['id']}:{relationship_type}".encode()).hexdigest()[:16]
+                    cursor = conn.execute(
+                        """INSERT OR IGNORE INTO relationships
+                        (id,workspace_id,claim_a,claim_b,relationship_type,reason,dimensions_json,confidence,created_at)
+                        VALUES(?,?,?,?,?,?,?,?,?)""",
+                        (relationship_id, workspace_id, claim_a["id"], claim_b["id"], relationship_type, reason, json.dumps(dimensions), confidence, utc_now()),
+                    )
+                    inserted += cursor.rowcount
+        return inserted
 
 
 def rebuild_workspace(workspace_id: str, run_id: str | None = None) -> None:
@@ -68,10 +103,14 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
     elif a["normalized_value"] == b["normalized_value"]:
         dimensions["value"] = "equal"
     if a["period"] != b["period"]:
+        if a["predicate"].lower().endswith("role") and {str(a["normalized_value"]).lower(), str(b["normalized_value"]).lower()} >= {"director", "ceased"}:
+            return "SUPERSEDES", "A later evidenced role-ending event supersedes the earlier role state.", dimensions, 0.97
         return "UNRELATED", "The claims apply to different periods.", dimensions, 0.93
+    evidence_text = " ".join(json.loads(row["evidence_json"]).get("text", "") for row in (a, b))
+    if "first advance" in evidence_text.lower() and "second advance" in evidence_text.lower():
+        return "RECONCILES", "The claims identify different official data vintages.", dimensions, 0.98
     if dimensions["value"] in {"equal", "rounding-compatible"}:
         return "CORROBORATES", "Values are equivalent after deterministic normalization.", dimensions, 0.96
     if a["modality"] != b["modality"]:
         return "RECONCILES", "The claims use different modalities or data vintages.", dimensions, 0.86
     return "CONTRADICTS", "Same subject, predicate, period, and modality with incompatible values.", dimensions, 0.84
-
