@@ -80,3 +80,22 @@ def test_lexical_search_returns_claims_with_retrieval_metadata() -> None:
         payload = response.json()
         assert payload["lanes"]["lexical"] >= 1
         assert payload["items"][0]["workspace_id"] == "india-macro"
+
+
+def test_read_models_and_exports_are_available() -> None:
+    with TestClient(app) as client:
+        workspace = client.get("/api/v1/workspaces/delhivery")
+        assert workspace.status_code == 200
+        assert workspace.json()["workspace"]["id"] == "delhivery"
+        claim = client.get("/api/v1/claims/clm-delhivery-revenue-annual")
+        assert claim.status_code == 200
+        assert claim.json()["anchors"]
+        history = client.get("/api/v1/facts/fact-delhivery-revenue-fy24/history")
+        assert history.status_code == 200
+        assert history.json()["items"]
+        csv_export = client.get("/api/v1/exports/facts?workspace_id=delhivery&format=csv")
+        assert csv_export.status_code == 200
+        assert "subject,predicate" in csv_export.text
+        xlsx_export = client.get("/api/v1/exports/facts?workspace_id=delhivery&format=xlsx")
+        assert xlsx_export.status_code == 200
+        assert xlsx_export.content[:2] == b"PK"

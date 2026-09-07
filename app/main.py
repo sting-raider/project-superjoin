@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import hashlib
+import io
 import json
 import uuid
 from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .budget import snapshot as budget_snapshot
@@ -44,6 +46,11 @@ def workspaces() -> dict[str, Any]:
     return {"items": rows_to_dicts(rows)}
 
 
+@app.get("/api/v1/workspaces/{workspace_id}")
+def workspace_detail(workspace_id: str) -> dict[str, Any]:
+    return overview(workspace_id)
+
+
 @app.get("/api/v1/overview")
 def overview(workspace_id: str = "delhivery") -> dict[str, Any]:
     with db() as conn:
@@ -63,6 +70,29 @@ def documents(workspace_id: str = "delhivery") -> dict[str, Any]:
     with db() as conn:
         rows = conn.execute("SELECT * FROM documents WHERE workspace_id=? ORDER BY published_at DESC, name", (workspace_id,)).fetchall()
     return {"items": rows_to_dicts(rows)}
+
+
+@app.get("/api/v1/documents/{document_id}/file")
+def document_file(document_id: str) -> FileResponse:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
+    if not row or not row["stored_path"]:
+        raise HTTPException(404, "Stored PDF not found")
+    root = settings.upload_dir.resolve()
+    path = Path(row["stored_path"]).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(404, "Stored PDF not found")
+    return FileResponse(path, media_type="application/pdf", filename=Path(row["name"]).name)
+
+
+@app.get("/api/v1/documents/{document_id}")
+def document_detail(document_id: str) -> dict[str, Any]:
+    with db() as conn:
+        document = row_to_dict(conn.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone())
+        if not document:
+            raise HTTPException(404, "Document not found")
+        pages = rows_to_dicts(conn.execute("SELECT * FROM page_artifacts WHERE document_id=? ORDER BY page_number", (document_id,)).fetchall())
+    return {"document": document, "pages": pages}
 
 
 @app.post("/api/v1/documents", status_code=202)
@@ -198,6 +228,27 @@ def fact(fact_id: str) -> dict[str, Any]:
     return {"fact": item, "claims": claims, "anchors": anchors, "interpretations": interpretations, "relationships": relationships}
 
 
+@app.get("/api/v1/facts/{fact_id}/history")
+def fact_history(fact_id: str) -> dict[str, Any]:
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM facts WHERE id=?", (fact_id,)).fetchone():
+            raise HTTPException(404, "Fact not found")
+        rows = conn.execute("SELECT * FROM fact_versions WHERE fact_id=? ORDER BY revision DESC", (fact_id,)).fetchall()
+    return {"items": rows_to_dicts(rows)}
+
+
+@app.get("/api/v1/claims/{claim_id}")
+def claim_detail(claim_id: str) -> dict[str, Any]:
+    with db() as conn:
+        claim = row_to_dict(conn.execute("SELECT * FROM claims WHERE id=?", (claim_id,)).fetchone())
+        if not claim:
+            raise HTTPException(404, "Claim not found")
+        anchors = rows_to_dicts(conn.execute("SELECT ea.*,ce.purpose FROM evidence_anchors ea JOIN claim_evidence ce ON ce.anchor_id=ea.id WHERE ce.claim_id=? ORDER BY ea.pdf_page,ea.id", (claim_id,)).fetchall())
+        interpretations = rows_to_dicts(conn.execute("SELECT * FROM claim_interpretations WHERE claim_id=? ORDER BY version DESC", (claim_id,)).fetchall())
+        relationships = rows_to_dicts(conn.execute("SELECT * FROM relationships WHERE claim_a=? OR claim_b=? ORDER BY created_at DESC", (claim_id, claim_id)).fetchall())
+    return {"claim": claim, "anchors": anchors, "interpretations": interpretations, "relationships": relationships}
+
+
 @app.get("/api/v1/relationships")
 def relationships(workspace_id: str = "delhivery", relationship_type: str | None = None) -> dict[str, Any]:
     with db() as conn:
@@ -234,6 +285,47 @@ def changes(workspace_id: str = "delhivery") -> dict[str, Any]:
     with db() as conn:
         rows = conn.execute("SELECT * FROM changes WHERE workspace_id=? ORDER BY created_at DESC LIMIT 100", (workspace_id,)).fetchall()
     return {"items": rows_to_dicts(rows)}
+
+
+@app.get("/api/v1/exports/facts")
+def export_facts(workspace_id: str = "delhivery", format: str = "json") -> Response:
+    with db() as conn:
+        rows = rows_to_dicts(conn.execute("SELECT * FROM facts WHERE workspace_id=? ORDER BY subject,predicate,period", (workspace_id,)).fetchall())
+    normalized_format = format.casefold()
+    if normalized_format == "json":
+        return JSONResponse(rows)
+    fields = ["id", "subject", "predicate", "normalized_value", "display_value", "value_type", "unit", "period", "modality", "scope", "status", "reason", "revision"]
+    if normalized_format == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows({key: _export_cell(key, row.get(key)) for key in fields} for row in rows)
+        return Response(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=project-superjoin-facts.csv"})
+    if normalized_format == "xlsx":
+        try:
+            from openpyxl import Workbook
+        except ImportError as exc:  # pragma: no cover - dependency is bundled in the image
+            raise HTTPException(503, "XLSX export dependency is unavailable") from exc
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Facts"
+        sheet.append(fields)
+        for row in rows:
+            sheet.append([_export_cell(key, row.get(key)) for key in fields])
+        stream = io.BytesIO()
+        workbook.save(stream)
+        return Response(stream.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=project-superjoin-facts.xlsx"})
+    raise HTTPException(400, "format must be json, csv, or xlsx")
+
+
+def _export_cell(key: str, value: Any) -> Any:
+    """Neutralize formula-like source text while preserving decimal strings."""
+
+    if not isinstance(value, str) or key in {"normalized_value", "revision"}:
+        return value
+    if value.startswith(("=", "+", "@")):
+        return "'" + value
+    return value
 
 
 @app.get("/api/v1/cases")
