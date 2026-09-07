@@ -29,7 +29,7 @@ flowchart LR
     C --> I[Evidence inspector]
 ```
 
-The implementation is one FastAPI process with a SQLite WAL database and a static React/Vite client. A background task performs document work, while `run_events` makes progress, cancellation, retry, and history durable. Publication is a transaction over claims, interpretations, relationships, fact versions, and the workspace revision. The same runtime is therefore useful in a Docker demo and understandable in an interview.
+The implementation is one FastAPI process with a SQLite WAL database and a static React/Vite client. A `BackgroundTasks` job performs document work, while durable `runs`, `run_events`, extraction checkpoints, cancellation guards, and explicit retry/resume routes make interruption recoverable in the supported one-container deployment. The runtime does not claim automatic cross-process leases or heartbeat recovery; adding a queue would increase setup and failure surface for this evaluator path. Publication is a transaction over claims, interpretations, relationships, fact versions, and the workspace revision. The same runtime is therefore useful in a Docker demo and understandable in an interview.
 
 ## Why these technologies
 

@@ -269,6 +269,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   and setup surface without improving this single-workspace evidence review;
   the inspector exposes exact page/printed-page anchors and the API exposes the
   original PDF for a configured document.
+- Job execution is deliberately a single-process FastAPI `BackgroundTasks`
+  lane. Durable `runs`, `run_events`, extraction checkpoints, cancellation
+  guards, and explicit retry/resume routes provide recoverability for the
+  supported one-container deployment; automatic cross-process leases and
+  heartbeat recovery are not claimed. Adding a queue or scheduler would add
+  infrastructure without improving the assignment’s local evaluator path.
 - Backend verification is pytest, Ruff, compile checks, Docker smoke tests,
   and accessibility-tree UI smoke. Full mypy/Hypothesis/Playwright suites are
   not presented as run; the small deterministic contracts are covered directly
@@ -380,7 +386,7 @@ Raw claims must not be rewritten when normalization, entity resolution, or revie
 | `relationship_assessments` | Claim interpretation pair, comparison dimensions, conclusion, evidence references, rule/model version |
 | `canonical_facts`, `fact_versions`, `fact_memberships` | Stable fact identity, context, candidate values, supporting/conflicting claims, resolution state, system revision history |
 | `review_decisions` | Reviewer label, action, rationale, affected interpretation/fact revision, replacement or revocation links |
-| `pipeline_runs`, `job_tasks`, `job_events` | Durable task state, checkpoints, retries, leases, cancellation, progress |
+| `runs`, `extraction_batches`, `run_events` | Durable task state, extraction checkpoints, retries, cancellation, progress, and reconnectable history for the single-process worker |
 | `model_calls`, `budget_ledger` | Request fingerprints, recorded responses, tokens, duration, reservations and spend |
 | `knowledge_changes` | Before/after versions, change category, affected claims, causal run or review decision |
 | `eval_runs`, `demo_cases`, `model_profiles` | Reproducibility metadata, case bookmarks, nonsecret configuration |
@@ -1149,7 +1155,10 @@ Report provider latency separately from local processing. Do not claim large-sca
 ### Runtime discipline
 
 - One Uvicorn application process.
-- SQLite-backed scheduler with task leases and heartbeat recovery.
+- Durable SQLite run records and extraction checkpoints; explicit retry/resume
+  after a process interruption. The supported deployment is one Uvicorn
+  process, so cross-process task leases and heartbeat recovery are outside the
+  demonstrated scope.
 - Two isolated parsing workers by default; do not share PDF handles across threads.
 - Two concurrent model calls per role by default, with configurable limits.
 - Short database writes and per-workspace publication locking.
