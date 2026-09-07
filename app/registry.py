@@ -142,26 +142,30 @@ def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> i
               AND (ci.entity_status<>'resolved' OR ci.predicate_status<>'resolved')""",
             (workspace_id,),
         ).fetchall()
-    resolutions: dict[tuple[str, str, str], dict[str, Any]] = {}
+    entity_resolutions: dict[str, dict[str, Any]] = {}
+    predicate_resolutions: dict[str, dict[str, Any]] = {}
     for row in rows:
-        key = (
-            _name_key(row["subject"]),
-            _predicate_key(row["predicate"]),
-            str(row["value_type"]),
-        )
-        resolution = resolutions.get(key)
-        if resolution is None:
-            resolution = observe_claim_schema(
-                workspace_id,
-                row["subject"],
-                row["predicate"],
-                row["value_type"],
-                json.loads(row["evidence_json"]),
-                run_id,
+        evidence = json.loads(row["evidence_json"])
+        entity_key = _name_key(row["subject"])
+        predicate_key = _predicate_key(row["predicate"])
+        entity = entity_resolutions.get(entity_key)
+        predicate = predicate_resolutions.get(predicate_key)
+        if entity is None:
+            entity = resolve_entity(workspace_id, row["subject"], run_id=run_id)
+            with db() as conn:
+                entity = _materialize_resolution(
+                    conn, workspace_id, "entity", row["subject"], entity, row["value_type"], evidence
+                )
+            entity_resolutions[entity_key] = entity
+        if predicate is None:
+            predicate = resolve_predicate(
+                workspace_id, row["predicate"], row["value_type"], run_id=run_id
             )
-            resolutions[key] = resolution
-        entity = resolution["entity"]
-        predicate = resolution["predicate"]
+            with db() as conn:
+                predicate = _materialize_resolution(
+                    conn, workspace_id, "predicate", row["predicate"], predicate, row["value_type"], evidence
+                )
+            predicate_resolutions[predicate_key] = predicate
         with db() as conn:
             conn.execute(
                 """UPDATE claim_interpretations SET
@@ -271,16 +275,27 @@ def _resolve_staged(
 def _lexical_candidates(source: str, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     source_key = _name_key(source)
     source_tokens = set(source_key.split())
+    source_grams = _trigrams(source_key)
     scored = []
     for candidate in candidates:
         candidate_key = _name_key(candidate["label"])
         candidate_tokens = set(candidate_key.split())
+        candidate_grams = _trigrams(candidate_key)
+        gram_union = source_grams | candidate_grams
+        gram_score = len(source_grams & candidate_grams) / len(gram_union) if gram_union else 0.0
+        if not source_tokens.intersection(candidate_tokens) and gram_score < 0.18:
+            continue
         union = source_tokens | candidate_tokens
         jaccard = len(source_tokens & candidate_tokens) / len(union) if union else 0.0
         sequence = SequenceMatcher(None, source_key, candidate_key).ratio()
-        score = max(jaccard, sequence * 0.92)
+        score = max(jaccard, sequence * 0.92, gram_score)
         scored.append({**candidate, "score": round(score, 6), "lane": "lexical"})
     return sorted(scored, key=lambda item: item["score"], reverse=True)
+
+
+def _trigrams(value: str) -> set[str]:
+    compact = re.sub(r"\s+", "_", value)
+    return {compact[index : index + 3] for index in range(max(0, len(compact) - 2))}
 
 
 def _embedding_candidates(
