@@ -1,5 +1,21 @@
 # Evaluation and evidence status
 
+## Full-corpus offline baseline
+
+`evals/reports/starter-corpus-e2e.json` records a run at `6f06ee5` over the
+locally supplied six-PDF archive: 511 pages, 1,646.668 seconds, 19,551 accepted
+numeric hints, and 21 quarantined hints. Exact matches against the existing
+demo case reference were **0/10 claims and 0/4 relationships**. This is a failed
+case-recovery baseline, not a claim-quality result. The diagnostic reference
+is not independently annotated gold, and provider roles were all unavailable.
+
+Reproduce with `python scripts/evaluate_starter_corpus.py --database data/new-corpus-eval.sqlite3`
+after preparing the local archive. The runner refuses to overwrite an existing
+database. PDFs, page text, and the evaluation database remain local under
+`data/`; the report contains aggregate measurements and case metadata only.
+Live provider quality, a production-generated demo snapshot, and independently
+verified gold annotations remain outstanding.
+
 Project SuperJoin keeps evaluation inputs and reports under `evals/`. Reports distinguish a measured result, an offline check, and a skipped check. A skipped live benchmark is never presented as a model-quality claim.
 
 ## Gold contract
@@ -29,4 +45,3 @@ Every metric report includes its denominator, split, prompt/model version, parse
 ## What remains external
 
 The full starter-corpus parser comparison, live extraction comparison, live embedding comparison, and 1,000-page/50,000-claim synthetic performance run require either the source-verified starter archive or a configured provider. They are bounded, reproducible harnesses rather than hidden assumptions. The README explains how to supply the archive locally without redistributing PDFs whose rights have not been audited.
-
