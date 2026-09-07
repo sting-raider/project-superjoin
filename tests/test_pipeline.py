@@ -3,7 +3,12 @@ from pathlib import Path
 from app.config import settings
 from app.db import db, init_db
 from app.parser import ParsedPage
-from app.pipeline import _claim_id, _model_extract, build_extraction_batches
+from app.pipeline import (
+    _claim_id,
+    _deterministically_normalized,
+    _model_extract,
+    build_extraction_batches,
+)
 from app.providers import ProviderResult
 
 
@@ -69,3 +74,17 @@ def test_extraction_batches_cover_useful_claims_after_page_twenty_four() -> None
     assert any(batch.page_start <= 37 <= batch.page_end for batch in batches)
     assert all(len({page["pdf_page"] for page in batch.pages}) <= settings.extraction_batch_pages for batch in batches)
     assert all(sum(len(page["text"]) for page in batch.pages) <= settings.extraction_batch_chars for batch in batches)
+
+
+def test_model_numeric_normalization_is_recomputed_deterministically() -> None:
+    model_claim = {
+        "raw_value": "$42 million",
+        "normalized_value": "42",
+        "value_type": "money",
+        "unit": "widgets",
+    }
+    normalized = _deterministically_normalized(model_claim)
+    assert normalized["normalized_value"] == "42000000"
+    assert normalized["value_type"] == "money"
+    assert normalized["unit"] == "USD"
+    assert normalized["normalization_trace"] == ["parse-number", "scale:million"]

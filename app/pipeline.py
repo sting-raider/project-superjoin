@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from .budget import BudgetExceeded, estimate_cost, reserve, settle
 from .config import settings
 from .db import db, utc_now
+from .normalization import parse_numeric
 from .parser import candidate_claims, parse_pdf
 from .provenance import persist_anchor, persist_interpretation, persist_page_artifacts
 from .providers import ProviderError, available, input_hash, structured_chat, vision_chat
@@ -416,6 +417,7 @@ def _insert_claims(workspace_id: str, document_id: str, candidates: list[dict[st
     inserted = 0
     with db() as conn:
         for item in candidates:
+            item = _deterministically_normalized(item)
             evidence = item.get("evidence") or {}
             claim_id = _claim_id(workspace_id, document_id, item, evidence)
             if conn.execute("SELECT 1 FROM claims WHERE id=?", (claim_id,)).fetchone():
@@ -437,6 +439,35 @@ def _insert_claims(workspace_id: str, document_id: str, candidates: list[dict[st
             persist_interpretation(conn, item, claim_id, created_at)
             inserted += 1
     return inserted
+
+
+def _deterministically_normalized(item: dict[str, Any]) -> dict[str, Any]:
+    """Recompute scalar normalization; model values remain source interpretations."""
+
+    normalized = dict(item)
+    declared_type = str(item.get("value_type") or "text").casefold()
+    if declared_type not in {
+        "number",
+        "money",
+        "percentage",
+        "percentage_points",
+        "rate",
+        "range",
+        "missing",
+    }:
+        return normalized
+    parsed = parse_numeric(str(item.get("raw_value") or ""))
+    if parsed.get("value_type") == "text":
+        return normalized
+    normalized["normalized_value"] = parsed.get("normalized")
+    normalized["value_type"] = parsed.get("value_type")
+    normalized["precision"] = parsed.get("precision")
+    normalized["normalization_trace"] = parsed.get("trace", [])
+    parsed_unit = parsed.get("currency")
+    if parsed.get("value_type") in {"percentage", "percentage_points", "rate"}:
+        parsed_unit = parsed.get("unit")
+    normalized["unit"] = parsed_unit or item.get("unit") or parsed.get("unit")
+    return normalized
 
 
 def _claim_id(workspace_id: str, document_id: str, item: dict[str, Any], evidence: dict[str, Any]) -> str:

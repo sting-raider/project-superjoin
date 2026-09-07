@@ -4,7 +4,18 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-MONEY_SYMBOLS = {"₹": "INR", "rs": "INR", "rs.": "INR", "inr": "INR", "$": "USD", "usd": "USD"}
+MONEY_SYMBOLS = {
+    "₹": "INR",
+    "rs": "INR",
+    "rs.": "INR",
+    "inr": "INR",
+    "$": "USD",
+    "usd": "USD",
+    "€": "EUR",
+    "eur": "EUR",
+    "£": "GBP",
+    "gbp": "GBP",
+}
 SCALE_FACTORS = {
     "thousand": Decimal(1000),
     "k": Decimal(1000),
@@ -16,6 +27,7 @@ SCALE_FACTORS = {
     "mn": Decimal(1000000),
     "billion": Decimal(1000000000),
     "bn": Decimal(1000000000),
+    "trillion": Decimal(1000000000000),
 }
 MISSING_VALUES = {"", "-", "—", "–", "n/a", "na", "nil", "none", "not available", "not meaningful", "nm"}
 
@@ -77,7 +89,7 @@ def parse_numeric(raw: str) -> dict[str, Any]:
         display_unit = "pp"
     else:
         normalized = value
-        value_type = "number"
+        value_type = "money" if currency else "number"
         display_unit = currency or unit
     if len(values) > 1 and re.search(r"-|to|–", original, flags=re.IGNORECASE):
         end = values[1]

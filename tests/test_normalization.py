@@ -7,6 +7,12 @@ def test_indian_money_units_normalize_to_base_amount() -> None:
     parsed = parse_numeric("₹8,142 crore")
     assert parsed["normalized"] == "81420000000"
     assert parsed["currency"] == "INR"
+    assert parsed["value_type"] == "money"
+
+
+def test_open_currency_and_scale_vocabulary() -> None:
+    assert parse_numeric("€1.25 billion")["normalized"] == "1250000000"
+    assert parse_numeric("£2 trillion")["currency"] == "GBP"
 
 
 def test_percentage_is_stored_as_fraction() -> None:
