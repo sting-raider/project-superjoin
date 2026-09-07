@@ -56,3 +56,13 @@ def test_provider_configuration_contract_is_wired_through_compose() -> None:
             assert variable in compose
     assert "project_superjoin_data" in compose
     assert "neo4j" not in compose.casefold()
+    for variable in (
+        "AI_TIMEOUT_SECONDS",
+        "AI_INPUT_PRICE_PER_MILLION",
+        "AI_OUTPUT_PRICE_PER_MILLION",
+        "AI_BUDGET_USD",
+        "MAX_PDF_MB",
+        "MAX_PDF_PAGES",
+    ):
+        assert f"{variable}=" in env_example
+        assert variable in compose
