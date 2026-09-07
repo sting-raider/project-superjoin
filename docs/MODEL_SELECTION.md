@@ -39,7 +39,7 @@ implicitly.
 On 2026-09-08, the six locally supplied starter PDFs were processed through
 the generic extraction lane using NVIDIA NIM model
 `nvidia/nemotron-3-super-120b-a12b` at
-`https://integrate.api.nvidia.com/v1`. The run covered 511 pages and 66
+`https://integrate.api.nvidia.com/v1`. The run covered 511 pages and 103
 bounded extraction batches, published 9,362 accepted claims and 14 quarantined
 claims, and recorded 193 extraction calls (174 complete, 19 failed) with
 US$2.056295 estimated spend under the project ledger. Four of the ten

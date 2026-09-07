@@ -50,6 +50,18 @@ implement response-format hints, and set `EMBEDDING_INCLUDE_DIMENSIONS=false`
 when an embedding service chooses dimensions server-side. Provider errors,
 missing models, unsupported response formats, and vector dimension mismatches
 remain visible in run telemetry and search responses.
+
+For example, NVIDIA NIM can be used for extraction without changing code:
+
+```dotenv
+EXTRACTION_BASE_URL=https://integrate.api.nvidia.com/v1
+EXTRACTION_API_KEY=${NVIDIA_API_KEY}
+EXTRACTION_MODEL=nvidia/nemotron-3-super-120b-a12b
+EXTRACTION_STRUCTURED_OUTPUT_MODE=json_object
+```
+
+Keep the key in the local environment; the placeholder above is documentation
+only and is never committed.
 Transient HTTP 429/5xx and connection/timeout failures use the configured
 `AI_RETRY_ATTEMPTS` and `AI_RETRY_BACKOFF_SECONDS` policy (including
 `Retry-After` when supplied); the final provider error is retained when retries

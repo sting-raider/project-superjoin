@@ -1,0 +1,23 @@
+{
+  "status": "complete",
+  "role": "extraction",
+  "candidates": [
+    "nvidia/nemotron-3-super-120b-a12b"
+  ],
+  "cases": 1,
+  "results": [
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "case": "smoke",
+      "valid": true,
+      "latency_ms": 13878.33,
+      "provider_latency_ms": 13861,
+      "estimated_cost": 0.000186,
+      "attempts": 1,
+      "input_tokens": 52,
+      "output_tokens": 316,
+      "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
+      "claim_count": 1
+    }
+  ]
+}

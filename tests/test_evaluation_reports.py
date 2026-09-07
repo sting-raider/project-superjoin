@@ -64,3 +64,21 @@ def test_live_nim_report_preserves_role_limitations_and_call_telemetry() -> None
     assert any("reasoning provider role was not configured" in item for item in report["limitations"])
     assert any("Visual pages remain in review" in item for item in report["limitations"])
     assert any("Dense retrieval" in item for item in report["limitations"])
+
+
+def test_live_nim_model_benchmark_records_nonsecret_compatible_contract() -> None:
+    report_path = ROOT / "evals" / "reports" / "extraction-model-benchmark-nim.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "complete"
+    assert report["role"] == "extraction"
+    assert report["candidates"] == ["nvidia/nemotron-3-super-120b-a12b"]
+    assert report["cases"] == 1
+    assert len(report["results"]) == 1
+    result = report["results"][0]
+    assert result["valid"] is True
+    assert result["model"] == report["candidates"][0]
+    assert result["endpoint"] == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert result["attempts"] >= 1
+    assert result["provider_latency_ms"] >= 0
+    assert "nvapi" not in report_path.read_text(encoding="utf-8").casefold()
