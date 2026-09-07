@@ -57,31 +57,67 @@ def rebuild_workspace(workspace_id: str, run_id: str | None = None) -> None:
             reason = "One grounded source claim is available."
             related = conn.execute("SELECT relationship_type,reason FROM relationships WHERE workspace_id=? AND (claim_a=? OR claim_b=?)", (workspace_id, claim["id"], claim["id"])).fetchall()
             types = {row["relationship_type"] for row in related}
-            if "CORROBORATES" in types:
-                status, reason = "CORROBORATED", next((row["reason"] for row in related if row["relationship_type"] == "CORROBORATES"), reason)
-            elif "CONTRADICTS" in types:
+            if "CONTRADICTS" in types:
                 status, reason = "CONTESTED", next((row["reason"] for row in related if row["relationship_type"] == "CONTRADICTS"), reason)
             elif "RECONCILES" in types:
                 status, reason = "SUPPORTED", next((row["reason"] for row in related if row["relationship_type"] == "RECONCILES"), reason)
+            elif "CORROBORATES" in types:
+                status, reason = "CORROBORATED", next((row["reason"] for row in related if row["relationship_type"] == "CORROBORATES"), reason)
+            updated_at = utc_now()
             conn.execute(
                 """INSERT INTO facts(id,workspace_id,subject,predicate,normalized_value,display_value,value_type,unit,period,modality,scope,status,reason,evidence_json,revision,updated_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET status=excluded.status,reason=excluded.reason,evidence_json=excluded.evidence_json,revision=facts.revision+1,updated_at=excluded.updated_at""",
-                (fact_id, workspace_id, claim["subject"], claim["predicate"], claim["normalized_value"], claim["raw_value"], claim["value_type"], claim["unit"], claim["period"], claim["modality"], claim["scope"], status, reason, claim["evidence_json"], 1, utc_now()),
+                (fact_id, workspace_id, claim["subject"], claim["predicate"], claim["normalized_value"], claim["raw_value"], claim["value_type"], claim["unit"], claim["period"], claim["modality"], claim["scope"], status, reason, claim["evidence_json"], 1, updated_at),
             )
+            revision = conn.execute("SELECT revision FROM facts WHERE id=?", (fact_id,)).fetchone()["revision"]
+            version_id = f"{fact_id}-v{revision}"
+            conn.execute("INSERT OR IGNORE INTO fact_versions(id,fact_id,revision,normalized_value,display_value,status,reason,knowledge_revision,evidence_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (version_id, fact_id, revision, claim["normalized_value"], claim["raw_value"], status, reason, revision, claim["evidence_json"], updated_at))
+            conn.execute("INSERT OR IGNORE INTO fact_memberships(fact_version_id,claim_id,role,created_at) VALUES(?,?,?,?)", (version_id, claim["id"], "supporting", updated_at))
+            conn.execute("UPDATE reviews SET stale=1,status='stale' WHERE fact_id=? AND based_on_revision<? AND status='active'", (fact_id, revision))
         conn.execute("UPDATE workspaces SET active_revision=active_revision+1 WHERE id=?", (workspace_id,))
 
 
-def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | None = None) -> dict[str, Any]:
+def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | None = None, policy: str = "strict", known_at_revision: int | None = None) -> dict[str, Any]:
     with db() as conn:
         rows = conn.execute("SELECT * FROM facts WHERE workspace_id=? AND lower(subject)=lower(?) AND lower(predicate)=lower(?) AND (? IS NULL OR period=?) ORDER BY updated_at DESC", (workspace_id, subject, predicate, period, period)).fetchall()
         if not rows:
             return {"decision": "not_found", "safe_to_use": False, "reason_codes": ["NO_MATCH"], "alternatives": []}
+        if known_at_revision is not None:
+            rows = [row for row in rows if int(row["revision"]) <= known_at_revision]
+            if not rows:
+                return {"decision": "not_found", "safe_to_use": False, "reason_codes": ["NO_MATCH_AT_REVISION"], "alternatives": []}
+        if period is None and len({row["period"] for row in rows}) > 1:
+            return {"decision": "needs_context", "safe_to_use": False, "reason_codes": ["PERIOD_REQUIRED"], "alternatives": [_fact_payload(row) for row in rows], "coverage": {"candidate_count": len(rows)}}
         statuses = {row["status"] for row in rows}
-        if "CONTESTED" in statuses or len({row["normalized_value"] for row in rows}) > 1:
-            return {"decision": "block", "safe_to_use": False, "reason_codes": ["CONTESTED_OR_MULTIPLE"], "alternatives": [_fact_payload(row) for row in rows]}
+        differing_values = len({row["normalized_value"] for row in rows}) > 1
+        if "CONTESTED" in statuses or "UNRESOLVED" in statuses or differing_values:
+            if policy == "human_preference":
+                preferred = conn.execute("""SELECT f.*,r.id AS review_id FROM facts f JOIN reviews r ON r.fact_id=f.id
+                    WHERE f.workspace_id=? AND f.subject=? AND f.predicate=? AND (? IS NULL OR f.period=?)
+                    AND r.action IN ('prefer','select') AND r.status='active' AND r.stale=0 AND r.based_on_revision=f.revision
+                    ORDER BY r.created_at DESC LIMIT 1""", (workspace_id, subject, predicate, period, period)).fetchone()
+                if preferred:
+                    row = preferred
+                    return _allow_payload(row, ["GROUNDED", "HUMAN_PREFERENCE"], preferred["review_id"])
+            reason_codes = ["CONTESTED_OR_MULTIPLE"]
+            if any(row["status"] == "UNRESOLVED" for row in rows):
+                reason_codes.append("UNRESOLVED_CONTEXT")
+            stale = conn.execute("SELECT COUNT(*) AS count FROM reviews WHERE workspace_id=? AND fact_id IN ({}) AND (stale=1 OR status='stale')".format(",".join("?" for _ in rows)), (workspace_id, *[row["id"] for row in rows])).fetchone()["count"]
+            if stale:
+                reason_codes.append("STALE_REVIEW")
+            return {"decision": "block", "safe_to_use": False, "reason_codes": reason_codes, "alternatives": [_fact_payload(row) for row in rows], "coverage": {"candidate_count": len(rows)}}
         row = rows[0]
-        return {"decision": "allow", "safe_to_use": True, "fact_version_id": row["id"], "knowledge_revision": row["revision"], "value": row["normalized_value"], "display_value": row["display_value"], "unit": row["unit"], "reason_codes": ["GROUNDED"], "evidence": json.loads(row["evidence_json"])}
+        if not row["evidence_json"]:
+            return {"decision": "needs_review", "safe_to_use": False, "reason_codes": ["NO_EVIDENCE"], "alternatives": [_fact_payload(row)]}
+        return _allow_payload(row, ["GROUNDED"])
+
+
+def _allow_payload(row: Any, reason_codes: list[str], review_id: str | None = None) -> dict[str, Any]:
+    payload = {"decision": "allow", "safe_to_use": True, "fact_version_id": row["id"], "knowledge_revision": row["revision"], "value": row["normalized_value"], "display_value": row["display_value"], "unit": row["unit"], "reason_codes": reason_codes, "evidence": json.loads(row["evidence_json"]), "coverage": {"evidence_count": len(json.loads(row["evidence_json"])) if isinstance(json.loads(row["evidence_json"]), list) else 1}, "policy_version": "strict-v1"}
+    if review_id:
+        payload["review_id"] = review_id
+    return payload
 
 
 def _fact_payload(row: Any) -> dict[str, Any]:

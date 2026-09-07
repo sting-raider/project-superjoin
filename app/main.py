@@ -197,11 +197,26 @@ def cases() -> dict[str, Any]:
     return {"items": DEMO_CASES}
 
 
-@app.get("/api/v1/resolve")
-def resolve(workspace_id: str = "delhivery", subject: str = "", predicate: str = "", period: str | None = None) -> dict[str, Any]:
+def _resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_id = str(payload.get("workspace_id") or "delhivery")
+    subject = str(payload.get("subject") or "")
+    predicate = str(payload.get("predicate") or "")
+    period = payload.get("period")
+    policy = str(payload.get("policy") or "strict")
+    known_at_revision = payload.get("known_at_revision")
     if not subject or not predicate:
         raise HTTPException(400, "subject and predicate are required")
-    return {"query": {"workspace_id": workspace_id, "subject": subject, "predicate": predicate, "period": period}, **resolve_fact(workspace_id, subject, predicate, period)}
+    return {"query": {"workspace_id": workspace_id, "subject": subject, "predicate": predicate, "period": period, "policy": policy, "known_at_revision": known_at_revision}, **resolve_fact(workspace_id, subject, predicate, period, policy, known_at_revision)}
+
+
+@app.get("/api/v1/resolve")
+def resolve(workspace_id: str = "delhivery", subject: str = "", predicate: str = "", period: str | None = None, policy: str = "strict", known_at_revision: int | None = None) -> dict[str, Any]:
+    return _resolve_payload({"workspace_id": workspace_id, "subject": subject, "predicate": predicate, "period": period, "policy": policy, "known_at_revision": known_at_revision})
+
+
+@app.post("/api/v1/resolve")
+def resolve_post(payload: dict[str, Any]) -> dict[str, Any]:
+    return _resolve_payload(payload)
 
 
 @app.post("/api/v1/reviews")
@@ -209,13 +224,32 @@ def create_review(payload: dict[str, Any]) -> dict[str, Any]:
     required = {"workspace_id", "fact_id", "action", "rationale"}
     if not required.issubset(payload):
         raise HTTPException(400, "workspace_id, fact_id, action, and rationale are required")
+    allowed_actions = {"keep_unresolved", "prefer", "select", "confirm_context", "invalidate", "revoke"}
+    if payload["action"] not in allowed_actions:
+        raise HTTPException(400, f"action must be one of {sorted(allowed_actions)}")
     with db() as conn:
         fact_row = conn.execute("SELECT revision FROM facts WHERE id=? AND workspace_id=?", (payload["fact_id"], payload["workspace_id"])).fetchone()
         if not fact_row:
             raise HTTPException(404, "Fact not found")
+        based_on_revision = int(payload.get("based_on_revision", fact_row["revision"]))
+        if based_on_revision != fact_row["revision"]:
+            raise HTTPException(409, "Review is based on a stale fact revision")
         review_id = f"review-{uuid.uuid4().hex[:12]}"
-        conn.execute("INSERT INTO reviews(id,workspace_id,fact_id,action,rationale,based_on_revision,created_at) VALUES(?,?,?,?,?,?,?)", (review_id, payload["workspace_id"], payload["fact_id"], payload["action"], payload["rationale"], fact_row["revision"], utc_now()))
+        status = "revoked" if payload["action"] == "revoke" else "active"
+        conn.execute("INSERT INTO reviews(id,workspace_id,fact_id,action,rationale,based_on_revision,status,revokes_review_id,decision_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (review_id, payload["workspace_id"], payload["fact_id"], payload["action"], payload["rationale"], based_on_revision, status, payload.get("revokes_review_id"), json.dumps(payload.get("decision", {})), utc_now()))
+        if payload["action"] == "revoke" and payload.get("revokes_review_id"):
+            conn.execute("UPDATE reviews SET status='revoked',revoked_at=? WHERE id=? AND workspace_id=?", (utc_now(), payload["revokes_review_id"], payload["workspace_id"]))
     return {"id": review_id, "status": "recorded"}
+
+
+@app.get("/api/v1/reviews")
+def reviews(workspace_id: str = "delhivery", include_stale: bool = True) -> dict[str, Any]:
+    with db() as conn:
+        if include_stale:
+            rows = conn.execute("SELECT * FROM reviews WHERE workspace_id=? ORDER BY created_at DESC", (workspace_id,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM reviews WHERE workspace_id=? AND stale=0 AND status='active' ORDER BY created_at DESC", (workspace_id,)).fetchall()
+    return {"items": rows_to_dicts(rows)}
 
 
 @app.get("/api/v1/settings")

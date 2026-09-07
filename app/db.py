@@ -389,6 +389,12 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "cache_hit": "INTEGER NOT NULL DEFAULT 0",
         },
         "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'"},
+        "reviews": {
+            "status": "TEXT NOT NULL DEFAULT 'active'",
+            "revoked_at": "TEXT",
+            "revokes_review_id": "TEXT",
+            "decision_json": "TEXT NOT NULL DEFAULT '{}'",
+        },
     }
     for table, columns in additions.items():
         existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}

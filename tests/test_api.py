@@ -49,3 +49,19 @@ def test_fact_inspector_keeps_both_revenue_evidence_anchors() -> None:
             "clm-delhivery-revenue-annual",
             "clm-delhivery-revenue-presentation",
         }
+
+
+def test_resolver_requires_period_for_temporal_role_history() -> None:
+    with TestClient(app) as client:
+        result = client.post("/api/v1/resolve", json={"workspace_id": "delhivery", "subject": "Suvir Suren Sujan", "predicate": "director_role"})
+        assert result.status_code == 200
+        assert result.json()["decision"] == "needs_context"
+
+
+def test_human_preference_is_explicit_and_revision_bound() -> None:
+    with TestClient(app) as client:
+        review = client.post("/api/v1/reviews", json={"workspace_id": "india-macro", "fact_id": "fact-india-gdp-fy26", "action": "prefer", "rationale": "Use the RBI forecast for this named scenario."})
+        assert review.status_code == 200
+        result = client.post("/api/v1/resolve", json={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26", "policy": "human_preference"})
+        assert result.json()["decision"] == "allow"
+        assert "HUMAN_PREFERENCE" in result.json()["reason_codes"]
