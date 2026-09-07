@@ -124,3 +124,15 @@ def test_live_app_initializes_without_demo_artifact_modules(tmp_path: Path) -> N
     )
     assert result.returncode == 0, result.stderr
     assert "Project SuperJoin" in result.stdout
+
+
+def test_runtime_provider_configuration_has_no_gemini_specific_logic() -> None:
+    root = Path(__file__).parents[1]
+    runtime_files = [
+        *(root / "app").glob("*.py"),
+        root / ".env.example",
+        root / "compose.yaml",
+        root / "web" / "src" / "main.jsx",
+    ]
+    leaked = [str(path.relative_to(root)) for path in runtime_files if "gemini" in path.read_text(encoding="utf-8").casefold()]
+    assert not leaked, f"runtime provider surface contains Gemini-specific markers: {leaked}"
