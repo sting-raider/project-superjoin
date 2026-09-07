@@ -270,6 +270,7 @@ CREATE TABLE IF NOT EXISTS extraction_batches (
   input_hash TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'planned',
   claim_count INTEGER NOT NULL DEFAULT 0,
+  response_json TEXT,
   error TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -421,6 +422,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
         },
         "fact_versions": {"alternatives_json": "TEXT NOT NULL DEFAULT '[]'"},
         "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'", "document_id": "TEXT"},
+        "extraction_batches": {"response_json": "TEXT"},
         "reviews": {
             "status": "TEXT NOT NULL DEFAULT 'active'",
             "revoked_at": "TEXT",

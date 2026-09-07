@@ -152,11 +152,19 @@ def _extract_document_batches(
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="extract") as executor:
         futures = {}
         for batch in batches:
+            batch_payload = {
+                "pages": batch.pages,
+                "candidates": batch.candidates,
+            }
             digest = input_hash(
                 EXTRACTION_PROMPT_VERSION,
                 filename,
-                json.dumps(batch.pages, ensure_ascii=False, sort_keys=True),
+                json.dumps(batch_payload, ensure_ascii=False, sort_keys=True),
             )
+            cached = _completed_batch(document_id, digest)
+            if cached is not None:
+                results[batch.index] = cached
+                continue
             _checkpoint_batch(document_id, run_id, batch, digest, "processing")
             future = executor.submit(
                 _model_extract, batch.candidates, filename, run_id, batch.pages
@@ -169,14 +177,43 @@ def _extract_document_batches(
             except Exception as exc:  # noqa: BLE001 - retain batch fallback and telemetry
                 claims = batch.candidates
                 _checkpoint_batch(
-                    document_id, run_id, batch, digest, "failed", len(claims), str(exc)
+                    document_id,
+                    run_id,
+                    batch,
+                    digest,
+                    "failed",
+                    len(claims),
+                    str(exc),
+                    claims,
                 )
             else:
                 _checkpoint_batch(
-                    document_id, run_id, batch, digest, "complete", len(claims)
+                    document_id,
+                    run_id,
+                    batch,
+                    digest,
+                    "complete",
+                    len(claims),
+                    None,
+                    claims,
                 )
             results[batch.index] = claims
     return [claim for index in sorted(results) for claim in results[index]]
+
+
+def _completed_batch(document_id: str, digest: str) -> list[dict[str, Any]] | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT response_json FROM extraction_batches WHERE document_id=? AND input_hash=? AND status='complete'",
+            (document_id, digest),
+        ).fetchone()
+    if not row or not row["response_json"]:
+        return None
+    try:
+        value = json.loads(row["response_json"])
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, list) else None
 
 
 def _checkpoint_batch(
@@ -187,6 +224,7 @@ def _checkpoint_batch(
     status: str,
     claim_count: int = 0,
     error: str | None = None,
+    claims: list[dict[str, Any]] | None = None,
 ) -> None:
     now = utc_now()
     checkpoint_id = "batch-" + hashlib.sha256(
@@ -195,13 +233,14 @@ def _checkpoint_batch(
     with db() as conn:
         conn.execute(
             """INSERT INTO extraction_batches
-            (id,run_id,document_id,batch_index,page_start,page_end,input_hash,status,claim_count,error,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+            (id,run_id,document_id,batch_index,page_start,page_end,input_hash,status,claim_count,response_json,error,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(document_id,input_hash) DO UPDATE SET
               run_id=excluded.run_id,batch_index=excluded.batch_index,
               page_start=excluded.page_start,page_end=excluded.page_end,
               status=excluded.status,claim_count=excluded.claim_count,
-              error=excluded.error,updated_at=excluded.updated_at""",
+              response_json=excluded.response_json,error=excluded.error,
+              updated_at=excluded.updated_at""",
             (
                 checkpoint_id,
                 run_id,
@@ -212,6 +251,7 @@ def _checkpoint_batch(
                 digest,
                 status,
                 claim_count,
+                json.dumps(claims, ensure_ascii=False) if claims is not None else None,
                 error,
                 now,
                 now,

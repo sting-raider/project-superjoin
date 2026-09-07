@@ -1,11 +1,13 @@
 from pathlib import Path
 
 from app.config import settings
-from app.db import db, init_db
+from app.db import db, init_db, utc_now
 from app.parser import ParsedPage
 from app.pipeline import (
+    ExtractionBatch,
     _claim_id,
     _deterministically_normalized,
+    _extract_document_batches,
     _model_extract,
     _vision_extract_page,
     build_extraction_batches,
@@ -75,6 +77,58 @@ def test_extraction_batches_cover_useful_claims_after_page_twenty_four() -> None
     assert any(batch.page_start <= 37 <= batch.page_end for batch in batches)
     assert all(len({page["pdf_page"] for page in batch.pages}) <= settings.extraction_batch_pages for batch in batches)
     assert all(sum(len(page["text"]) for page in batch.pages) <= settings.extraction_batch_chars for batch in batches)
+
+
+def test_completed_extraction_batch_is_reused_without_provider_call(monkeypatch, tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "checkpoint.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    calls: list[str] = []
+    batch = ExtractionBatch(
+        index=0,
+        pages=[{"pdf_page": 1, "section": 0, "start": 0, "text": "ARR reached $42 million."}],
+        candidates=[],
+    )
+    extracted = [{
+        "subject": "Nimbus Cloud",
+        "predicate": "annual_recurring_revenue",
+        "raw_value": "$42 million",
+        "evidence": {"pdf_page": 1, "text": "ARR reached $42 million."},
+    }]
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
+            conn.execute(
+                "INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)",
+                ("d", "w", "source.pdf", "hash", "processing", now),
+            )
+            conn.execute(
+                "INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("r", "w", "d", "live", "processing", 0, "Extracting", now, now),
+            )
+
+        def fake_extract(*args, **kwargs):
+            calls.append("called")
+            return extracted
+
+        monkeypatch.setattr("app.pipeline._model_extract", fake_extract)
+        first = _extract_document_batches([batch], "source.pdf", "r", "d")
+        second = _extract_document_batches([batch], "source.pdf", "r", "d")
+        assert first == second == extracted
+        assert calls == ["called"]
+        with db() as conn:
+            row = conn.execute(
+                "SELECT status,claim_count,response_json FROM extraction_batches WHERE document_id='d'"
+            ).fetchone()
+        assert row["status"] == "complete"
+        assert row["claim_count"] == 1
+        assert '"annual_recurring_revenue"' in row["response_json"]
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)
 
 
 def test_model_numeric_normalization_is_recomputed_deterministically() -> None:
