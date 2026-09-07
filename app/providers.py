@@ -27,38 +27,56 @@ class ProviderError(RuntimeError):
     pass
 
 
-def available() -> bool:
-    return bool(settings.ai_base_url and settings.ai_api_key)
+def _role_config(role: str) -> tuple[str, str]:
+    values = {
+        "extraction": (settings.extraction_base_url, settings.extraction_api_key),
+        "reasoning": (settings.reasoning_base_url, settings.reasoning_api_key),
+        "vision": (settings.vision_base_url, settings.vision_api_key),
+        "embedding": (settings.embedding_base_url, settings.embedding_api_key),
+        "embeddings": (settings.embedding_base_url, settings.embedding_api_key),
+    }
+    return values.get(role, (settings.ai_base_url, settings.ai_api_key))
 
 
-def _post(path: str, payload: dict[str, Any], model: str) -> ProviderResult:
-    if not available():
-        raise ProviderError("No OpenAI-compatible provider configured")
-    url = f"{settings.ai_base_url}{path}"
+def available(role: str | None = None) -> bool:
+    if role:
+        base_url, api_key = _role_config(role)
+        return bool(base_url and api_key)
+    return any(available(name) for name in ("extraction", "reasoning", "vision", "embedding"))
+
+
+def _post(path: str, payload: dict[str, Any], model: str, role: str) -> ProviderResult:
+    base_url, api_key = _role_config(role)
+    if not base_url or not api_key:
+        raise ProviderError(f"No OpenAI-compatible {role} provider configured")
+    url = f"{base_url}{path}"
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,
         data=body,
-        headers={"Authorization": f"Bearer {settings.ai_api_key}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
     started = time.perf_counter()
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        with urllib.request.urlopen(request, timeout=settings.ai_timeout_seconds) as response:
             raw = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
         raise ProviderError(str(exc)) from exc
     elapsed = int((time.perf_counter() - started) * 1000)
-    choice = (raw.get("choices") or [{}])[0]
-    message = choice.get("message", {})
-    content = message.get("content", "")
+    if path == "/embeddings":
+        parsed = raw
+    else:
+        choice = (raw.get("choices") or [{}])[0]
+        message = choice.get("message", {})
+        content = message.get("content", "")
+        if isinstance(content, list):
+            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        try:
+            parsed = json.loads(content)
+        except (TypeError, json.JSONDecodeError):
+            parsed = content
     usage = raw.get("usage") or {}
-    if isinstance(content, list):
-        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-    try:
-        parsed = json.loads(content)
-    except (TypeError, json.JSONDecodeError):
-        parsed = content
     input_tokens = usage.get("prompt_tokens")
     output_tokens = usage.get("completion_tokens")
     estimated_cost = ((input_tokens or max(1, len(body) // 4)) / 1_000_000) * settings.ai_input_price_per_million + ((output_tokens or 1200) / 1_000_000) * settings.ai_output_price_per_million
@@ -85,7 +103,10 @@ def structured_chat(role: str, system: str, user: str, model: str | None = None,
         "max_tokens": max_output_tokens,
         "response_format": {"type": "json_object"},
     }
-    return _post("/chat/completions", payload, chosen)
+    if max_output_tokens == 1200:
+        max_output_tokens = getattr(settings, f"{role}_max_output_tokens", max_output_tokens)
+        payload["max_tokens"] = max_output_tokens
+    return _post("/chat/completions", payload, chosen, role)
 
 
 def vision_chat(system: str, user: str, image_bytes: bytes, model: str | None = None, max_output_tokens: int = 1200) -> ProviderResult:
@@ -101,13 +122,16 @@ def vision_chat(system: str, user: str, image_bytes: bytes, model: str | None = 
         "max_tokens": max_output_tokens,
         "response_format": {"type": "json_object"},
     }
-    return _post("/chat/completions", payload, chosen)
+    if max_output_tokens == 1200:
+        max_output_tokens = settings.vision_max_output_tokens
+        payload["max_tokens"] = max_output_tokens
+    return _post("/chat/completions", payload, chosen, "vision")
 
 
 def embed(text: str, model: str | None = None) -> ProviderResult:
     chosen = model or settings.embedding_model
     payload = {"model": chosen, "input": text, "dimensions": settings.embedding_dimensions}
-    return _post("/embeddings", payload, chosen)
+    return _post("/embeddings", payload, chosen, "embedding")
 
 
 def input_hash(*parts: str) -> str:

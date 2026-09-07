@@ -44,7 +44,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
                 visual = _vision_extract_page(data, page.index, filename, run_id)
                 all_candidates.extend(visual)
         source_pages = [{"pdf_page": page.index + 1, "text": page.text[:6000]} for page in parsed.pages[:24] if page.text.strip()]
-        if available() and (all_candidates or source_pages):
+        if available("extraction") and (all_candidates or source_pages):
             model_candidates = _model_extract(all_candidates, filename, run_id, source_pages)
             if model_candidates:
                 all_candidates = model_candidates

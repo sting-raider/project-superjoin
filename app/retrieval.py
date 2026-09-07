@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 
+from .budget import BudgetExceeded, estimate_cost, reserve, settle
 from .config import settings
 from .db import db, rows_to_dicts, utc_now
 from .providers import ProviderError, available, embed
@@ -87,12 +88,12 @@ def search_claims(workspace_id: str, query: str, limit: int = 20, query_vector: 
 def create_embedding_space(workspace_id: str | None = None, model: str | None = None, template_version: str = "identity-v1") -> str:
     space_id = f"space-{uuid.uuid4().hex[:12]}"
     with db() as conn:
-        conn.execute("INSERT INTO embedding_spaces(id,workspace_id,provider,model,dimensions,template_version,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (space_id, workspace_id, settings.ai_base_url or "offline", model or settings.embedding_model, settings.embedding_dimensions, template_version, "active", utc_now()))
+        conn.execute("INSERT INTO embedding_spaces(id,workspace_id,provider,model,dimensions,template_version,status,created_at) VALUES(?,?,?,?,?,?,?,?)", (space_id, workspace_id, settings.embedding_base_url or "offline", model or settings.embedding_model, settings.embedding_dimensions, template_version, "active", utc_now()))
     return space_id
 
 
 def embed_claim(claim_id: str, space_id: str) -> dict[str, Any]:
-    if not available():
+    if not available("embedding"):
         raise ProviderError("No embedding provider configured")
     with db() as conn:
         claim = conn.execute("SELECT * FROM claims WHERE id=?", (claim_id,)).fetchone()
@@ -100,13 +101,28 @@ def embed_claim(claim_id: str, space_id: str) -> dict[str, Any]:
     if not claim or not space:
         raise ValueError("claim or embedding space not found")
     text = identity_text(dict(claim)) + "\n" + evidence_text(dict(claim))
-    result = embed(text, space["model"])
-    vector = _extract_vector(result.data)
+    content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    with db() as conn:
+        cached = conn.execute("SELECT dimensions,content_hash FROM embeddings e JOIN embedding_spaces s ON s.id=e.space_id WHERE e.space_id=? AND e.claim_id=?", (space_id, claim_id)).fetchone()
+    if cached and cached["content_hash"] == content_hash:
+        return {"claim_id": claim_id, "space_id": space_id, "dimensions": cached["dimensions"], "content_hash": content_hash, "cached": True}
+    reservation = None
+    try:
+        reservation = reserve(None, "embedding", space["model"], content_hash, estimate_cost(len(text), 32))
+        result = embed(text, space["model"])
+        vector = _extract_vector(result.data)
+    except (BudgetExceeded, ProviderError, ValueError):
+        if reservation:
+            settle(reservation, 0.0, status="failed")
+        raise
     if len(vector) != int(space["dimensions"]):
+        if reservation:
+            settle(reservation, 0.0, status="failed", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
         raise ValueError(f"embedding dimension mismatch: expected {space['dimensions']}, got {len(vector)}")
+    if reservation:
+        settle(reservation, result.estimated_cost, input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms)
     norm = math.sqrt(sum(value * value for value in vector)) or 1.0
     vector = [float(value / norm) for value in vector]
-    content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     with db() as conn:
         conn.execute("INSERT INTO embeddings(id,space_id,claim_id,content_hash,vector_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(space_id,claim_id) DO UPDATE SET content_hash=excluded.content_hash,vector_json=excluded.vector_json,created_at=excluded.created_at", (f"embedding-{uuid.uuid4().hex[:12]}", space_id, claim_id, content_hash, json.dumps(vector), utc_now()))
     return {"claim_id": claim_id, "space_id": space_id, "dimensions": len(vector), "content_hash": content_hash}

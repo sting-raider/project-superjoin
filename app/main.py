@@ -20,7 +20,8 @@ from .db import db, init_db, row_to_dict, rows_to_dicts, utc_now
 from .demo_data import DEMO_CASES
 from .knowledge import resolve_fact
 from .pipeline import process_document
-from .retrieval import search_claims
+from .providers import ProviderError, available
+from .retrieval import create_embedding_space, embed_claim, search_claims
 from .seed import seed_demo
 
 app = FastAPI(title="Project SuperJoin", version="0.1.0", description="Evidence-first temporal fact knowledge layer")
@@ -37,7 +38,7 @@ def startup() -> None:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1").fetchone()
-    return {"status": "ok", "project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": bool(settings.ai_base_url and settings.ai_api_key)}
+    return {"status": "ok", "project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": available()}
 
 
 @app.get("/api/v1/workspaces")
@@ -289,6 +290,32 @@ def budget() -> dict[str, Any]:
     return budget_snapshot()
 
 
+@app.post("/api/v1/embeddings/spaces")
+def create_embeddings_space(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_id = payload.get("workspace_id")
+    model = payload.get("model")
+    template_version = str(payload.get("template_version") or "identity-v1")
+    if workspace_id:
+        with db() as conn:
+            if not conn.execute("SELECT 1 FROM workspaces WHERE id=?", (workspace_id,)).fetchone():
+                raise HTTPException(404, "Workspace not found")
+    space_id = create_embedding_space(workspace_id, model, template_version)
+    with db() as conn:
+        row = row_to_dict(conn.execute("SELECT * FROM embedding_spaces WHERE id=?", (space_id,)).fetchone())
+    return row or {"id": space_id}
+
+
+@app.post("/api/v1/embeddings/{claim_id}")
+def embed_claim_endpoint(claim_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    space_id = str(payload.get("space_id") or "")
+    if not space_id:
+        raise HTTPException(400, "space_id is required")
+    try:
+        return embed_claim(claim_id, space_id)
+    except (ValueError, ProviderError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @app.get("/api/v1/changes")
 def changes(workspace_id: str = "delhivery") -> dict[str, Any]:
     with db() as conn:
@@ -399,7 +426,7 @@ def reviews(workspace_id: str = "delhivery", include_stale: bool = True) -> dict
 
 @app.get("/api/v1/settings")
 def settings_view() -> dict[str, Any]:
-    return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": bool(settings.ai_base_url and settings.ai_api_key), "roles": {"extraction": settings.extraction_model, "reasoning": settings.reasoning_model, "vision": settings.vision_model, "embeddings": settings.embedding_model}, "embedding_dimensions": settings.embedding_dimensions, "budget": budget_snapshot()}
+    return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": available(), "roles": {"extraction": settings.extraction_model, "reasoning": settings.reasoning_model, "vision": settings.vision_model, "embeddings": settings.embedding_model}, "configured_roles": {"extraction": available("extraction"), "reasoning": available("reasoning"), "vision": available("vision"), "embeddings": available("embedding")}, "embedding_dimensions": settings.embedding_dimensions, "budget": budget_snapshot()}
 
 
 @app.post("/api/v1/demo/reset")
