@@ -151,6 +151,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   accounted spend at the configured cumulative limit. A provider estimate that
   would exceed the remaining cap is recorded as `budget_capped` while the
   ledger remains within US$20; a regression covers cumulative-spend headroom.
+- Document lifecycle endpoints now archive/reactivate without deleting source
+  files or claims. Archiving removes affected derived relationships, marks
+  current fact versions unresolved, stales dependent reviews, and records a
+  Knowledge Diff item; reactivation recomputes active relationships and
+  grouped fact memberships. API coverage verifies Trust Gate blocking during
+  archive and restoration after reactivation.
 
 ### Resolved implementation simplifications
 

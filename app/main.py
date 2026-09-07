@@ -18,7 +18,7 @@ from .budget import snapshot as budget_snapshot
 from .config import settings
 from .db import db, init_db, row_to_dict, rows_to_dicts, utc_now
 from .demo_data import DEMO_CASES
-from .knowledge import resolve_fact
+from .knowledge import assess_relationships, rebuild_workspace, resolve_fact, set_document_archived
 from .pipeline import process_document
 from .providers import ProviderError, available
 from .retrieval import create_embedding_space, embed_claim, search_claims
@@ -95,6 +95,25 @@ def document_detail(document_id: str) -> dict[str, Any]:
             raise HTTPException(404, "Document not found")
         pages = rows_to_dicts(conn.execute("SELECT * FROM page_artifacts WHERE document_id=? ORDER BY page_number", (document_id,)).fetchall())
     return {"document": document, "pages": pages}
+
+
+@app.post("/api/v1/documents/{document_id}/archive")
+def archive_document(document_id: str) -> dict[str, Any]:
+    try:
+        return set_document_archived(document_id, True)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/v1/documents/{document_id}/reactivate")
+def reactivate_document(document_id: str) -> dict[str, Any]:
+    try:
+        result = set_document_archived(document_id, False)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    assess_relationships(result["workspace_id"])
+    rebuild_workspace(result["workspace_id"])
+    return result
 
 
 @app.post("/api/v1/documents", status_code=202)

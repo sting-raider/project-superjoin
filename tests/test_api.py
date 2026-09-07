@@ -112,3 +112,19 @@ def test_settings_exposes_nonsecret_independent_role_contract() -> None:
         assert payload["roles"]["embeddings"]["dimensions"] == 768
         assert payload["roles"]["vision"]["structured_output_mode"] == "json_object"
         assert payload["configured_roles"] == {"extraction": False, "reasoning": False, "vision": False, "embeddings": False}
+
+
+def test_document_archive_and_reactivate_are_auditable() -> None:
+    with TestClient(app) as client:
+        archive = client.post("/api/v1/documents/delhivery-annual/archive")
+        assert archive.status_code == 200
+        assert archive.json()["document"]["status"] == "archived"
+        blocked = client.get("/api/v1/resolve", params={"workspace_id": "delhivery", "subject": "Delhivery", "predicate": "revenue_from_services", "period": "FY24"}).json()
+        assert blocked["decision"] == "block"
+        reactivate = client.post("/api/v1/documents/delhivery-annual/reactivate")
+        assert reactivate.status_code == 200
+        assert reactivate.json()["document"]["status"] == "complete"
+        allowed = client.get("/api/v1/resolve", params={"workspace_id": "delhivery", "subject": "Delhivery", "predicate": "revenue_from_services", "period": "FY24"}).json()
+        assert allowed["decision"] == "allow"
+        changes = client.get("/api/v1/changes", params={"workspace_id": "delhivery"}).json()["items"]
+        assert any(change["kind"] == "document_archived" for change in changes)

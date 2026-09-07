@@ -19,8 +19,9 @@ docker compose up --build
 Open <http://localhost:8080>. No `.env` file, database server, GPU, model
 download, or runtime API key is required for the bundled demo snapshot. The
 application exposes `/api/v1/health`, `/api/v1/facts`, `/api/v1/search`, the
-POST `/api/v1/resolve` Trust Gate contract, and read/export routes for
-documents, claims, fact history, JSON, CSV, and XLSX.
+POST `/api/v1/resolve` Trust Gate contract, archive/reactivate document
+mutations, and read/export routes for documents, claims, fact history, JSON,
+CSV, and XLSX.
 
 To process a never-seen PDF, provide an OpenAI-compatible endpoint in a local
 `.env` (see `.env.example`) and restart Compose. Extraction, reasoning, vision,
