@@ -11,6 +11,7 @@ from .db import db, utc_now
 from .normalization import compare_numeric
 from .parser import candidate_claims, parse_pdf
 from .provenance import persist_anchor, persist_interpretation, persist_page_artifacts
+from .registry import register_workspace_claims
 from .providers import ProviderError, available, input_hash, structured_chat
 
 
@@ -35,6 +36,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
                 all_candidates = model_candidates
         _update_run(run_id, 60, f"Grounding {len(all_candidates)} candidate claims")
         inserted = _insert_claims(workspace_id, document_id, all_candidates)
+        register_workspace_claims(workspace_id)
         _update_run(run_id, 78, "Resolving relationships")
         _resolve_workspace(workspace_id, run_id)
         _update_run(run_id, 94, f"Published {inserted} grounded claims")

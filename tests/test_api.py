@@ -24,3 +24,12 @@ def test_strict_resolver_blocks_contested_forecast() -> None:
         assert payload["decision"] == "block"
         assert payload["safe_to_use"] is False
 
+
+def test_dynamic_registries_are_visible_without_overmerging() -> None:
+    with TestClient(app) as client:
+        entities = client.get("/api/v1/entities", params={"workspace_id": "delhivery"}).json()["items"]
+        predicates = client.get("/api/v1/predicates", params={"workspace_id": "delhivery"}).json()["items"]
+        assert {item["canonical_name"] for item in entities} >= {"Delhivery", "Suvir Suren Sujan"}
+        keys = {item["key"] for item in predicates}
+        assert "revenue_from_services" in keys
+        assert "revenue_from_contracts_with_customers" in keys

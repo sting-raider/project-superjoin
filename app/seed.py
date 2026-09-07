@@ -7,6 +7,7 @@ from pathlib import Path
 from .db import db, utc_now
 from .demo_data import DEMO_CASES, DEMO_CLAIMS, DEMO_DOCUMENTS, DEMO_RELATIONSHIPS, DEMO_WORKSPACES
 from .provenance import page_artifact_id, persist_anchor, persist_interpretation
+from .registry import register_workspace_claims
 
 
 def seed_demo() -> None:
@@ -56,6 +57,8 @@ def seed_demo() -> None:
         _seed_facts(conn)
         for case in DEMO_CASES:
             conn.execute("INSERT OR IGNORE INTO changes(id,workspace_id,run_id,kind,summary,details_json,created_at) VALUES(?,?,?,?,?,?,?)", (f"change-{case['id']}", case["workspace_id"], "demo-seed", "demo_case", case["title"], json.dumps(case), utc_now()))
+    for workspace in DEMO_WORKSPACES:
+        register_workspace_claims(workspace["id"])
 
 
 def _seed_facts(conn) -> None:

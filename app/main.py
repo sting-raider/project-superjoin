@@ -16,6 +16,7 @@ from .config import settings
 from .db import db, init_db, row_to_dict, rows_to_dicts, utc_now
 from .demo_data import DEMO_CASES
 from .knowledge import resolve_fact
+from .budget import snapshot as budget_snapshot
 from .pipeline import process_document
 from .seed import seed_demo
 
@@ -158,6 +159,27 @@ def relationships(workspace_id: str = "delhivery", relationship_type: str | None
     return {"items": rows_to_dicts(rows)}
 
 
+@app.get("/api/v1/entities")
+def entities(workspace_id: str = "delhivery") -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM entities WHERE workspace_id=? ORDER BY canonical_name", (workspace_id,)).fetchall()
+        aliases = conn.execute("SELECT ea.* FROM entity_aliases ea JOIN entities e ON e.id=ea.entity_id WHERE e.workspace_id=? ORDER BY ea.alias", (workspace_id,)).fetchall()
+    return {"items": rows_to_dicts(rows), "aliases": rows_to_dicts(aliases)}
+
+
+@app.get("/api/v1/predicates")
+def predicates(workspace_id: str = "delhivery") -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM predicates WHERE workspace_id=? ORDER BY key", (workspace_id,)).fetchall()
+        aliases = conn.execute("SELECT pa.* FROM predicate_aliases pa JOIN predicates p ON p.id=pa.predicate_id WHERE p.workspace_id=? ORDER BY pa.alias", (workspace_id,)).fetchall()
+    return {"items": rows_to_dicts(rows), "aliases": rows_to_dicts(aliases)}
+
+
+@app.get("/api/v1/budget")
+def budget() -> dict[str, Any]:
+    return budget_snapshot()
+
+
 @app.get("/api/v1/changes")
 def changes(workspace_id: str = "delhivery") -> dict[str, Any]:
     with db() as conn:
@@ -193,7 +215,7 @@ def create_review(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/v1/settings")
 def settings_view() -> dict[str, Any]:
-    return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": bool(settings.ai_base_url and settings.ai_api_key), "roles": {"extraction": settings.extraction_model, "reasoning": settings.reasoning_model, "vision": settings.vision_model, "embeddings": settings.embedding_model}, "embedding_dimensions": settings.embedding_dimensions, "budget_limit_usd": settings.ai_budget_usd}
+    return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": bool(settings.ai_base_url and settings.ai_api_key), "roles": {"extraction": settings.extraction_model, "reasoning": settings.reasoning_model, "vision": settings.vision_model, "embeddings": settings.embedding_model}, "embedding_dimensions": settings.embedding_dimensions, "budget": budget_snapshot()}
 
 
 @app.post("/api/v1/demo/reset")
