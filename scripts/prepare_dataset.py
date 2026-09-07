@@ -29,9 +29,10 @@ def _sha256(path: Path) -> str:
 
 def _page_count(path: Path) -> int | None:
     try:
-        from pypdf import PdfReader
+        import pdfplumber
 
-        return len(PdfReader(str(path), strict=False).pages)
+        with pdfplumber.open(path) as pdf:
+            return len(pdf.pages)
     except Exception:  # noqa: BLE001 - optional parser must not block manifest creation
         return None
 
