@@ -142,6 +142,40 @@ def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> i
               AND (ci.entity_status<>'resolved' OR ci.predicate_status<>'resolved')""",
             (workspace_id,),
         ).fetchall()
+        entity_candidates = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT id,canonical_name AS label FROM entities WHERE workspace_id=? AND status='active'",
+                (workspace_id,),
+            ).fetchall()
+        ]
+        predicate_candidates = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT id,key AS label,value_kind FROM predicates WHERE workspace_id=? AND status='active'",
+                (workspace_id,),
+            ).fetchall()
+        ]
+        entity_aliases = {
+            _name_key(row["alias"]): {"id": row["id"], "label": row["label"]}
+            for row in conn.execute(
+                "SELECT ea.entity_id AS id,ea.alias,e.canonical_name AS label FROM entity_aliases ea JOIN entities e ON e.id=ea.entity_id WHERE e.workspace_id=? AND ea.status='confirmed'",
+                (workspace_id,),
+            ).fetchall()
+        }
+        predicate_aliases = {
+            _predicate_key(row["alias"]): {
+                "id": row["id"], "label": row["label"], "value_kind": row["value_kind"]
+            }
+            for row in conn.execute(
+                "SELECT pa.predicate_id AS id,pa.alias,p.key AS label,p.value_kind FROM predicate_aliases pa JOIN predicates p ON p.id=pa.predicate_id WHERE p.workspace_id=? AND pa.relation='equivalent' AND pa.status='confirmed'",
+                (workspace_id,),
+            ).fetchall()
+        }
+    entity_exact = {_name_key(row["label"]): row for row in entity_candidates}
+    predicate_exact = {_predicate_key(row["label"]): row for row in predicate_candidates}
+    entity_ids = {row["id"] for row in entity_candidates}
+    predicate_ids = {row["id"] for row in predicate_candidates}
     entity_resolutions: dict[str, dict[str, Any]] = {}
     predicate_resolutions: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -151,21 +185,54 @@ def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> i
         entity = entity_resolutions.get(entity_key)
         predicate = predicate_resolutions.get(predicate_key)
         if entity is None:
-            entity = resolve_entity(workspace_id, row["subject"], run_id=run_id)
+            known_entity = entity_exact.get(entity_key) or entity_aliases.get(entity_key)
+            entity = (
+                _resolved(known_entity, "snapshot")
+                if known_entity
+                else _resolve_staged(
+                    workspace_id, "entity", row["subject"], entity_candidates, run_id
+                )
+            )
             with db() as conn:
                 entity = _materialize_resolution(
                     conn, workspace_id, "entity", row["subject"], entity, row["value_type"], evidence
                 )
             entity_resolutions[entity_key] = entity
+            if entity.get("id") and entity["id"] not in entity_ids:
+                candidate = {"id": entity["id"], "label": entity["canonical_name"]}
+                entity_candidates.append(candidate)
+                entity_exact[entity_key] = candidate
+                entity_ids.add(entity["id"])
         if predicate is None:
-            predicate = resolve_predicate(
-                workspace_id, row["predicate"], row["value_type"], run_id=run_id
+            known_predicate = predicate_exact.get(predicate_key) or predicate_aliases.get(
+                predicate_key
+            )
+            predicate = (
+                _resolved(known_predicate, "snapshot", row["value_type"])
+                if known_predicate
+                else _resolve_staged(
+                    workspace_id,
+                    "predicate",
+                    row["predicate"],
+                    predicate_candidates,
+                    run_id,
+                    row["value_type"],
+                )
             )
             with db() as conn:
                 predicate = _materialize_resolution(
                     conn, workspace_id, "predicate", row["predicate"], predicate, row["value_type"], evidence
                 )
             predicate_resolutions[predicate_key] = predicate
+            if predicate.get("id") and predicate["id"] not in predicate_ids:
+                candidate = {
+                    "id": predicate["id"],
+                    "label": predicate["key"],
+                    "value_kind": predicate["value_kind"],
+                }
+                predicate_candidates.append(candidate)
+                predicate_exact[predicate_key] = candidate
+                predicate_ids.add(predicate["id"])
         with db() as conn:
             conn.execute(
                 """UPDATE claim_interpretations SET
