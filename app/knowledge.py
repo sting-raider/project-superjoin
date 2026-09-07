@@ -90,6 +90,11 @@ def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | 
             return {"decision": "needs_context", "safe_to_use": False, "reason_codes": ["PERIOD_REQUIRED"], "alternatives": [_fact_payload(row) for row in rows], "coverage": {"candidate_count": len(rows)}}
         statuses = {row["status"] for row in rows}
         differing_values = len({row["normalized_value"] for row in rows}) > 1
+        contexts = {(row["period"], row["modality"], row["scope"], row["value_type"], row["unit"]) for row in rows}
+        if len(rows) > 1 and len(contexts) == 1 and statuses.issubset({"SUPPORTED", "CORROBORATED"}) and (not differing_values or statuses == {"CORROBORATED"}):
+            evidence = _aggregate_evidence(rows)
+            reason_codes = ["GROUNDED", "CORROBORATED"] if statuses == {"CORROBORATED"} else ["GROUNDED"]
+            return _allow_payload(rows[0], reason_codes, evidence=evidence)
         if "CONTESTED" in statuses or "UNRESOLVED" in statuses or differing_values:
             if policy == "human_preference":
                 preferred = conn.execute("""SELECT f.*,r.id AS review_id FROM facts f JOIN reviews r ON r.fact_id=f.id
@@ -112,11 +117,28 @@ def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | 
         return _allow_payload(row, ["GROUNDED"])
 
 
-def _allow_payload(row: Any, reason_codes: list[str], review_id: str | None = None) -> dict[str, Any]:
-    payload = {"decision": "allow", "safe_to_use": True, "fact_version_id": row["id"], "knowledge_revision": row["revision"], "value": row["normalized_value"], "display_value": row["display_value"], "unit": row["unit"], "reason_codes": reason_codes, "evidence": json.loads(row["evidence_json"]), "coverage": {"evidence_count": len(json.loads(row["evidence_json"])) if isinstance(json.loads(row["evidence_json"]), list) else 1}, "policy_version": "strict-v1"}
+def _allow_payload(row: Any, reason_codes: list[str], review_id: str | None = None, evidence: Any | None = None) -> dict[str, Any]:
+    evidence = evidence if evidence is not None else json.loads(row["evidence_json"])
+    payload = {"decision": "allow", "safe_to_use": True, "fact_version_id": row["id"], "knowledge_revision": row["revision"], "value": row["normalized_value"], "display_value": row["display_value"], "unit": row["unit"], "reason_codes": reason_codes, "evidence": evidence, "coverage": {"evidence_count": len(evidence) if isinstance(evidence, list) else 1}, "policy_version": "strict-v1"}
     if review_id:
         payload["review_id"] = review_id
     return payload
+
+
+def _aggregate_evidence(rows: list[Any]) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        value = json.loads(row["evidence_json"])
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            key = json.dumps(item, sort_keys=True, ensure_ascii=False)
+            if key not in seen:
+                seen.add(key)
+                evidence.append(item)
+    return evidence
 
 
 def _fact_payload(row: Any) -> dict[str, Any]:
