@@ -35,6 +35,7 @@ function App() {
   const [changes, setChanges] = useState([])
   const [reviews, setReviews] = useState([])
   const [runs, setRuns] = useState([])
+  const [replay, setReplay] = useState(null)
   const [selectedFact, setSelectedFact] = useState(null)
   const [selectedCase, setSelectedCase] = useState(null)
   const [section, setSection] = useState('overview')
@@ -45,13 +46,14 @@ function App() {
   const refresh = async (id = workspace) => {
     setLoading(true)
     try {
-      const [nextOverview, nextFacts, nextCases, nextRelationships, nextDocuments, nextChanges, nextReviews, nextRuns] = await Promise.all([
+      const [nextOverview, nextFacts, nextCases, nextRelationships, nextDocuments, nextChanges, nextReviews, nextRuns, nextReplay] = await Promise.all([
         get(`/overview?workspace_id=${id}`), get(`/facts?workspace_id=${id}&limit=200`), get('/cases'),
         get(`/relationships?workspace_id=${id}`), get(`/documents?workspace_id=${id}`),
         get(`/changes?workspace_id=${id}`), get(`/reviews?workspace_id=${id}`), get(`/runs?workspace_id=${id}`),
+        get('/demo/replay').catch(() => null),
       ])
       setOverview(nextOverview); setFacts(nextFacts.items); setCases(nextCases.items)
-      setRelationships(nextRelationships.items); setDocuments(nextDocuments.items); setChanges(nextChanges.items); setReviews(nextReviews.items); setRuns(nextRuns.items)
+      setRelationships(nextRelationships.items); setDocuments(nextDocuments.items); setChanges(nextChanges.items); setReviews(nextReviews.items); setRuns(nextRuns.items); setReplay(nextReplay)
     } catch (error) { setNotice(error.message) } finally { setLoading(false) }
   }
 
@@ -76,7 +78,27 @@ function App() {
   }
 
   const resetDemo = async () => {
-    await fetch(`${API}/demo/reset`, { method: 'POST' }); setNotice('Demo workspace reset'); await refresh()
+    await post('/demo/reset'); setNotice('Demo workspace reset'); await refresh()
+  }
+
+  const startReplay = async () => {
+    try {
+      const next = await post('/demo/replay/start')
+      setReplay(next)
+      if (next.workspace_id) setWorkspace(next.workspace_id)
+      setNotice('Recorded replay checkpoint ready: two documents loaded, no API calls.')
+      await refresh(next.workspace_id || workspace)
+    } catch (error) { setNotice(error.message) }
+  }
+
+  const advanceReplay = async () => {
+    try {
+      const next = await post('/demo/replay/advance')
+      setReplay(next)
+      if (next.workspace_id) setWorkspace(next.workspace_id)
+      setNotice('Recorded replay complete: the third document was ingested with no API calls.')
+      await refresh(next.workspace_id || workspace)
+    } catch (error) { setNotice(error.message) }
   }
 
   const onUpload = async (event) => {
@@ -106,7 +128,7 @@ function App() {
       <nav>
         {[['overview', 'Overview', '⌂'], ['facts', 'Facts', '▦'], ['documents', 'Documents', '▤'], ['cases', 'Required cases', '◈'], ['changes', 'Knowledge Diff', '↻'], ['runs', 'Runs', '▷'], ['review', 'Review', '✓'], ['trust', 'Trust Gate', '⊙'], ['settings', 'Settings', '⚙']].map(([key, label, icon]) => <button data-case-nav={key === 'cases' ? 'true' : undefined} className={section === key ? 'nav-item active' : 'nav-item'} onClick={() => setSection(key)} key={key}><span>{icon}</span>{label}{key === 'cases' && cases.length > 0 && <em>{cases.length}</em>}</button>)}
       </nav>
-      <div className="sidebar-foot">{overview?.demo ? <><Badge tone="good">● Demo mode</Badge><p>Recorded model outputs are available without an API key.</p><button className="text-button" onClick={resetDemo}>Reset demo workspace</button></> : <><Badge tone="neutral">● Live workspace</Badge><p>Provider-backed PDF processing is enabled for this workspace.</p></>}</div>
+      <div className="sidebar-foot">{overview?.demo ? <><Badge tone="good">● Demo mode</Badge><p>Recorded model outputs are available without an API key.</p>{replay?.stage === 'baseline_ready' ? <button className="text-button" onClick={advanceReplay}>Continue recorded replay</button> : replay?.stage === 'replayed' ? <p className="mono">Replay complete · no API calls</p> : <button className="text-button" onClick={startReplay}>Start recorded replay</button>}<button className="text-button" onClick={resetDemo}>Reset demo workspace</button></> : <><Badge tone="neutral">● Live workspace</Badge><p>Provider-backed PDF processing is enabled for this workspace.</p></>}</div>
     </aside>
     <main className="main">
       <header className="topbar"><div><span className="eyebrow">FACT KNOWLEDGE LAYER</span><h1>{overview?.workspace?.name || 'Workspace'}</h1></div><div className="top-actions"><label className="upload-button">＋ Upload PDF<input type="file" accept="application/pdf" onChange={onUpload} /></label><button className="icon-button" title="Search facts" onClick={() => setSection('facts')}>⌕</button></div></header>
