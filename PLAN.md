@@ -143,6 +143,14 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   provider endpoint/key is configured; no live model quality or cost result is
   being claimed. The candidates and exact comparison contract remain recorded
   in `docs/MODEL_SELECTION.md` and the two reports under `evals/reports/`.
+- The synthetic out-of-domain gold contract is now measured offline by
+  `scripts/evaluate_gold_fixture.py`: five numeric records have 1.0
+  value/page recall and 1.0 evidence-grounding precision, predicate-hint
+  accuracy is 0.8 because the utilization hint is intentionally shallow, all
+  six bounded extraction batches reach page 33, and the semantic executive
+  record is explicitly reported as provider-required. The report is
+  `evals/reports/gold-offline-generalization.json`; it is a development
+  capability measurement, not a live-model or starter-corpus gold claim.
 - A clean Docker build from the current `main` tree completed successfully on
   2026-09-07. The container reported healthy on `127.0.0.1:8080`, served the
   Project SuperJoin UI, returned all four required cases, blocked the strict
@@ -1441,7 +1449,7 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] Human decisions are immutable/auditable, revocable, and invalidated appropriately by new evidence.
 - [x] Duplicate ingestion makes no paid calls; incremental ingestion preserves previous work.
 - [x] Crash/resume, cancellation, and transactional publication pass.
-- [ ] Gold evaluation and mandatory performance reports contain measured results and limitations.
+- [x] Gold evaluation and mandatory performance reports contain measured results and limitations; live provider-quality comparisons remain explicitly skipped until credentials are supplied.
 - [x] Any unrun 1,000-page/50,000-claim benchmarks are labeled accurately and do not block the finished core submission.
 - [x] Cumulative paid API usage remains within US$20.
 - [x] Relevant tests, type checks, accessibility checks, and clean-build checks pass.

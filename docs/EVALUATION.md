@@ -48,6 +48,13 @@ Every metric report includes its denominator, split, prompt/model version, parse
 
 ## Current reproducible checks
 
+- `python scripts/evaluate_gold_fixture.py` produces
+  `evals/reports/gold-offline-generalization.json` from the synthetic,
+  out-of-domain gold split. The report measures deterministic numeric
+  value/page recall, predicate-hint accuracy, evidence grounding, six bounded
+  batches through page 33, and the semantic record that correctly remains
+  provider-required. It is an offline capability contract, not a live-model
+  quality claim.
 - `python scripts/run_security_eval.py` produces `evals/reports/security-offline.json`. The named prompt-injection fixture currently has five cases, zero strict false-allows, and retains suspicious content for inspection.
 - `python scripts/benchmark_parsers.py ...` produces `evals/reports/parser-smoke.json`. The available local smoke uses the two-page assignment PDF and records native character/word counts and timing for pdfplumber, PyMuPDF, and pypdfium2 rendering. It is explicitly a smoke comparison, not the six-document/511-page benchmark.
 - `python scripts/benchmark_models.py --role extraction` and `--role embedding` produce reports with `status: skipped` when no provider endpoint/key is configured. They record the candidate models and comparison contract without inventing quality, cost, or compatibility results.

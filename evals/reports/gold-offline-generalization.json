@@ -1,0 +1,108 @@
+{
+  "report_version": "1.0",
+  "project": "Project SuperJoin",
+  "suite": "synthetic-out-of-domain-gold-v1",
+  "source_kind": "synthetic fixture; no starter documents or demo metadata",
+  "gold_records": 6,
+  "numeric_records": 5,
+  "semantic_records": 1,
+  "metrics": {
+    "numeric_value_page_recall": 1.0,
+    "numeric_predicate_accuracy": 0.8,
+    "grounding_precision_on_value_page_matches": 1.0,
+    "semantic_provider_required": 1,
+    "late_page_batched": true
+  },
+  "coverage": {
+    "fixture_pages": 33,
+    "source_pages_with_assertions": 3,
+    "max_source_page": 33,
+    "extraction_batches": 6,
+    "batch_page_ranges": [
+      [
+        1,
+        6
+      ],
+      [
+        7,
+        12
+      ],
+      [
+        13,
+        18
+      ],
+      [
+        19,
+        24
+      ],
+      [
+        25,
+        30
+      ],
+      [
+        31,
+        33
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "record_id": "synthetic-nimbus-arr",
+      "page": 2,
+      "value_page_match": true,
+      "predicate_match": true,
+      "grounded": true,
+      "candidate_predicates": [
+        "annual_recurring_revenue"
+      ]
+    },
+    {
+      "record_id": "synthetic-nimbus-nrr",
+      "page": 2,
+      "value_page_match": true,
+      "predicate_match": true,
+      "grounded": true,
+      "candidate_predicates": [
+        "net_revenue_retention"
+      ]
+    },
+    {
+      "record_id": "synthetic-nimbus-churn",
+      "page": 2,
+      "value_page_match": true,
+      "predicate_match": true,
+      "grounded": true,
+      "candidate_predicates": [
+        "gross_logo_churn"
+      ]
+    },
+    {
+      "record_id": "synthetic-orion-capacity",
+      "page": 18,
+      "value_page_match": true,
+      "predicate_match": true,
+      "grounded": true,
+      "candidate_predicates": [
+        "annual_production_capacity"
+      ]
+    },
+    {
+      "record_id": "synthetic-orion-utilization",
+      "page": 18,
+      "value_page_match": true,
+      "predicate_match": false,
+      "grounded": true,
+      "candidate_predicates": [
+        "operated"
+      ]
+    }
+  ],
+  "limitations": [
+    "No extraction, reasoning, vision, or embedding provider was used.",
+    "The semantic executive-role record is intentionally reported as provider-required.",
+    "Deterministic hints measure value/evidence coverage; predicate naming remains an open-schema model responsibility.",
+    "This synthetic development split is not a live-model or starter-corpus quality claim."
+  ],
+  "duration_seconds": 0.0042,
+  "code_revision": "a70caa21257f3191e182fb76aae561bb1b59bdc9"
+}

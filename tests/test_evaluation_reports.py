@@ -24,3 +24,15 @@ def test_parser_comparison_is_six_document_and_licensing_aware() -> None:
     assert report["decision"]["runtime_primary"] == "pdfplumber"
     assert "licens" in report["decision"]["reason"].casefold()
     assert all(len(item["results"]) >= 2 for item in report["files"])
+
+
+def test_synthetic_gold_report_measures_offline_generalization_honestly() -> None:
+    report = json.loads((ROOT / "evals" / "reports" / "gold-offline-generalization.json").read_text(encoding="utf-8"))
+    assert report["source_kind"].startswith("synthetic")
+    assert report["gold_records"] == 6
+    assert report["metrics"]["numeric_value_page_recall"] == 1.0
+    assert report["metrics"]["grounding_precision_on_value_page_matches"] == 1.0
+    assert report["metrics"]["late_page_batched"] is True
+    assert report["metrics"]["semantic_provider_required"] == 1
+    assert report["coverage"]["max_source_page"] == 33
+    assert any("not a live-model" in item for item in report["limitations"])
