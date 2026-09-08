@@ -113,6 +113,34 @@ def test_flat_provider_evidence_is_canonicalized_before_grounding() -> None:
     assert claims[0]["evidence"] == {"text": text, "pdf_page": 31}
 
 
+def test_non_scalar_provider_fields_cannot_reach_persistence() -> None:
+    text = "Orion Works added 1.2 million units of annual capacity."
+    claims = _validated_grounded_claims(
+        [
+            {
+                "subject": ["Orion Works"],
+                "predicate": ["annual", "production", "capacity"],
+                "raw_value": ["1.2 million units"],
+                "value_type": "number",
+                "unit": ["units", "per year"],
+                "scope": ["Plant A", "manufacturing"],
+                "evidence": {
+                    "text": text,
+                    "pdf_page": [42],
+                    "kind": ["untrusted-provider-kind"],
+                },
+            }
+        ],
+        [],
+        [{"pdf_page": 42, "text": text}],
+    )
+
+    assert claims[0]["subject"] == "Orion Works"
+    assert claims[0]["predicate"] == "annual; production; capacity"
+    assert claims[0]["unit"] == "units; per year"
+    assert claims[0]["evidence"] == {"text": text, "pdf_page": 42}
+
+
 def test_truncated_extraction_is_not_published_as_deterministic_hints(
     monkeypatch, tmp_path: Path
 ) -> None:

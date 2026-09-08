@@ -45,6 +45,8 @@ _STAGE_BANDS = {
 
 _extraction_executor_lock = threading.Lock()
 _extraction_executors: dict[int, ThreadPoolExecutor] = {}
+_run_futures_lock = threading.Lock()
+_run_extraction_futures: dict[str, set[Any]] = {}
 
 
 class _ClaimEnvelope(BaseModel):
@@ -154,6 +156,7 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
     except _RunCancelled:
         _cancel_run(document_id, run_id)
     except Exception as exc:  # noqa: BLE001 - persist every failed run for inspection
+        _cancel_extraction_futures(run_id)
         _mark_provisional(run_id, "failed")
         _update_document(document_id, status="failed")
         _update_stage(run_id, "failed", 1, 1, f"Failed: {exc}", status="failed")
@@ -293,9 +296,11 @@ def _extract_document_batches(
         future = executor.submit(
             _model_extract, batch.candidates, filename, run_id, batch.pages
         )
+        _track_extraction_future(run_id, future)
         futures[future] = (batch, digest)
     retryable: list[tuple[ExtractionBatch, str]] = []
     for future in as_completed(futures):
+        _untrack_extraction_future(run_id, future)
         _raise_if_cancelled(run_id)
         batch, digest = futures[future]
         try:
@@ -365,7 +370,10 @@ def _extract_document_batches(
             ): (batch, digest)
             for batch, digest in pending
         }
+        for future in retry_futures:
+            _track_extraction_future(run_id, future)
         for future in as_completed(retry_futures):
+            _untrack_extraction_future(run_id, future)
             _raise_if_cancelled(run_id)
             batch, digest = retry_futures[future]
             try:
@@ -429,6 +437,28 @@ def _extraction_executor() -> ThreadPoolExecutor:
                 thread_name_prefix="extract-global",
             ),
         )
+
+
+def _track_extraction_future(run_id: str, future: Any) -> None:
+    with _run_futures_lock:
+        _run_extraction_futures.setdefault(run_id, set()).add(future)
+
+
+def _untrack_extraction_future(run_id: str, future: Any) -> None:
+    with _run_futures_lock:
+        futures = _run_extraction_futures.get(run_id)
+        if not futures:
+            return
+        futures.discard(future)
+        if not futures:
+            _run_extraction_futures.pop(run_id, None)
+
+
+def _cancel_extraction_futures(run_id: str) -> None:
+    with _run_futures_lock:
+        futures = list(_run_extraction_futures.pop(run_id, set()))
+    for future in futures:
+        future.cancel()
 
 
 def _completed_batch(document_id: str, digest: str) -> list[dict[str, Any]] | None:
@@ -579,21 +609,54 @@ def _validated_grounded_claims(
         item = dict(source_item)
         evidence = item.get("evidence")
         if isinstance(evidence, str):
-            item["evidence"] = {
-                "text": evidence,
-                "pdf_page": item.pop("pdf_page", None),
-            }
-        elif isinstance(evidence, dict) and not evidence.get("pdf_page"):
-            item["evidence"] = {
-                **evidence,
-                "pdf_page": item.pop("pdf_page", None),
-            }
+            evidence_text = evidence
+            evidence_page = item.pop("pdf_page", None)
+        elif isinstance(evidence, dict):
+            evidence_text = _model_scalar(evidence.get("text"), 500)
+            evidence_page = evidence.get("pdf_page") or item.pop("pdf_page", None)
+        else:
+            continue
+        if isinstance(evidence_page, list):
+            evidence_page = evidence_page[0] if evidence_page else None
+        try:
+            evidence_page = int(evidence_page) if evidence_page is not None else None
+        except (TypeError, ValueError):
+            evidence_page = None
+        item["evidence"] = {
+            "text": _model_scalar(evidence_text, 500),
+            "pdf_page": evidence_page,
+        }
+        for key, limit in (
+            ("subject", 240),
+            ("predicate", 240),
+            ("raw_value", 500),
+            ("value_type", 40),
+            ("unit", 80),
+            ("period", 120),
+            ("modality", 80),
+            ("scope", 240),
+            ("normalized_value", 500),
+        ):
+            if item.get(key) is not None:
+                item[key] = _model_scalar(item[key], limit)
+        if not item.get("subject") or not item.get("predicate") or not item.get("raw_value"):
+            continue
         if (
             validate_model_claim(item)
             and _model_claim_grounded(item, candidates, source_pages)
         ):
             valid.append(item)
     return valid
+
+
+def _model_scalar(value: Any, limit: int) -> str:
+    if isinstance(value, (list, tuple)):
+        value = "; ".join(
+            str(part) for part in value if isinstance(part, (str, int, float, bool))
+        )
+    elif not isinstance(value, (str, int, float, bool)):
+        return ""
+    return " ".join(str(value).split())[:limit]
 
 
 def _repair_model_extract(compact: str, filename: str, run_id: str, model: str, candidates: list[dict[str, Any]], source_pages: list[dict[str, Any]]) -> Any | None:
