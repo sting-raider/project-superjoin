@@ -4,10 +4,9 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      APP_ENV: ${APP_ENV:-demo}
+      APP_ENV: ${APP_ENV:-production}
       DATABASE_PATH: /app/data/project_superjoin.sqlite3
       UPLOAD_DIR: /app/data/uploads
-      DEMO_MODE: ${DEMO_MODE:-true}
       PARSER_BACKEND: ${PARSER_BACKEND:-liteparse}
       PARSER_TIMEOUT_SECONDS: ${PARSER_TIMEOUT_SECONDS:-180}
       PARSER_POOL_SIZE: ${PARSER_POOL_SIZE:-1}

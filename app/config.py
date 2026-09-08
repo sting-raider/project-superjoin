@@ -35,10 +35,9 @@ def _bool_env(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    app_env: str = os.getenv("APP_ENV", "demo")
+    app_env: str = os.getenv("APP_ENV", "production")
     database_path: Path = Path(os.getenv("DATABASE_PATH", "data/project_superjoin.sqlite3"))
     upload_dir: Path = Path(os.getenv("UPLOAD_DIR", "data/uploads"))
-    demo_mode: bool = os.getenv("DEMO_MODE", "true").lower() in {"1", "true", "yes", "on"}
     parser_backend: str = _env("PARSER_BACKEND", "liteparse").lower()
     parser_timeout_seconds: int = _int_env("PARSER_TIMEOUT_SECONDS", 180)
     parser_pool_size: int = _int_env("PARSER_POOL_SIZE", 1)

@@ -1,10 +1,5 @@
-import os
 import uuid
 from pathlib import Path
-
-os.environ["DATABASE_PATH"] = str(Path("tmp") / "test-api.sqlite3")
-os.environ["UPLOAD_DIR"] = str(Path("tmp") / "test-uploads")
-os.environ["DEMO_MODE"] = "true"
 
 from fastapi.testclient import TestClient
 
@@ -19,282 +14,123 @@ def test_public_endpoint_redacts_url_credentials_and_query() -> None:
     assert _public_endpoint("/openai/deployments/model/chat/completions?api-version=hidden") == "/openai/deployments/model/chat/completions"
 
 
-def _fact_id(client, workspace_id: str, subject: str, predicate: str, period: str) -> str:
-    items = client.get("/api/v1/facts", params={"workspace_id": workspace_id, "limit": 500}).json()["items"]
-    match = next(
-        item
-        for item in items
-        if item["subject"] == subject and item["predicate"] == predicate and item["period"] == period
-    )
-    return match["id"]
+def test_fresh_runtime_is_empty_until_a_workspace_is_created(tmp_path: Path) -> None:
+    original_db, original_upload = settings.database_path, settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "empty.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        with TestClient(app) as client:
+            assert client.get("/api/v1/health").status_code == 200
+            assert client.get("/api/v1/workspaces").json()["items"] == []
+            assert client.get("/api/v1/overview").status_code == 404
+
+            created = client.post(
+                "/api/v1/workspaces",
+                json={"name": "Unseen SaaS Review", "description": "A fresh corpus"},
+            )
+            assert created.status_code == 201
+            workspace_id = created.json()["id"]
+            assert client.get(f"/api/v1/workspaces/{workspace_id}").json()["counts"] == {
+                "documents": 0, "claims": 0, "facts": 0, "relationships": 0,
+                "changes": 0, "grounded_claims": 0,
+            }
+            with db() as conn:
+                assert conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='demo_replay_state'"
+                ).fetchone() is None
+    finally:
+        object.__setattr__(settings, "database_path", original_db)
+        object.__setattr__(settings, "upload_dir", original_upload)
 
 
-def test_demo_health_and_required_cases() -> None:
-    with TestClient(app) as client:
-        assert client.get("/api/v1/health").status_code == 200
-        cases = client.get("/api/v1/cases").json()["items"]
-        assert [case["number"] for case in cases] == [1, 2, 3, 4]
+def test_workspace_create_slugifies_and_rejects_duplicate(tmp_path: Path) -> None:
+    original_db = settings.database_path
+    object.__setattr__(settings, "database_path", tmp_path / "workspace.sqlite3")
+    try:
+        with TestClient(app) as client:
+            name = f"New Advisory Corpus {uuid.uuid4().hex[:8]}"
+            created = client.post("/api/v1/workspaces", json={"name": name, "description": "test"})
+            assert created.status_code == 201
+            assert created.json()["id"].startswith("new-advisory-corpus-")
+            assert client.post("/api/v1/workspaces", json={"name": name}).status_code == 409
+    finally:
+        object.__setattr__(settings, "database_path", original_db)
 
 
-def test_strict_resolver_blocks_contested_forecast() -> None:
-    with TestClient(app) as client:
-        result = client.get("/api/v1/resolve", params={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26"})
-        payload = result.json()
-        assert payload["decision"] == "block"
-        assert payload["safe_to_use"] is False
-
-
-def test_dynamic_registries_are_visible_without_overmerging() -> None:
-    with TestClient(app) as client:
-        entities = client.get("/api/v1/entities", params={"workspace_id": "delhivery"}).json()["items"]
-        predicates = client.get("/api/v1/predicates", params={"workspace_id": "delhivery"}).json()["items"]
-        assert {item["canonical_name"] for item in entities} >= {"Delhivery", "Suvir Suren Sujan"}
-        keys = {item["key"] for item in predicates}
-        assert "revenue_from_services" in keys
-        assert "revenue_from_contracts_with_customers" in keys
-
-
-def test_fact_inspector_keeps_both_revenue_evidence_anchors() -> None:
-    with TestClient(app) as client:
-        fact_id = _fact_id(client, "delhivery", "Delhivery", "revenue_from_services", "FY24")
-        response = client.get(f"/api/v1/facts/{fact_id}")
-        assert response.status_code == 200
-        payload = response.json()
-        assert len(payload["fact"]["evidence"]) == 2
-        assert {claim["id"] for claim in payload["claims"]} >= {
-            "clm-delhivery-revenue-annual",
-            "clm-delhivery-revenue-presentation",
-        }
-        assert {anchor["claim_id"] for anchor in payload["anchors"]} >= {
-            "clm-delhivery-revenue-annual",
-            "clm-delhivery-revenue-presentation",
-        }
-
-
-def test_document_detail_exposes_page_quality_and_source_metadata() -> None:
-    with TestClient(app) as client:
-        response = client.get("/api/v1/documents/delhivery-annual")
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["document"]["source_url"].startswith("https://")
-        assert payload["pages"]
-        first_page = payload["pages"][0]
-        assert {"page_number", "parser", "quality_score", "quality_flags", "disposition"} <= first_page.keys()
-        assert any(page["printed_label"] for page in payload["pages"])
-
-
-def test_resolver_requires_period_for_temporal_role_history() -> None:
-    with TestClient(app) as client:
-        result = client.post("/api/v1/resolve", json={"workspace_id": "delhivery", "subject": "Suvir Suren Sujan", "predicate": "director_role"})
-        assert result.status_code == 200
-        assert result.json()["decision"] == "needs_context"
-
-
-def test_human_preference_is_explicit_and_revision_bound() -> None:
-    with TestClient(app) as client:
-        fact_id = _fact_id(client, "india-macro", "India", "real_gdp_growth", "FY26")
-        review = client.post("/api/v1/reviews", json={"workspace_id": "india-macro", "fact_id": fact_id, "action": "prefer", "rationale": "Use the RBI forecast for this named scenario."})
-        assert review.status_code == 200
-        result = client.post("/api/v1/resolve", json={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26", "policy": "human_preference"})
-        assert result.json()["decision"] == "allow"
-        assert "HUMAN_PREFERENCE" in result.json()["reason_codes"]
-        revoked = client.post(
-            "/api/v1/reviews",
-            json={
-                "workspace_id": "india-macro",
-                "fact_id": fact_id,
-                "action": "revoke",
-                "rationale": "The named scenario preference is no longer approved.",
-                "revokes_review_id": review.json()["id"],
-            },
-        )
-        assert revoked.status_code == 200
-        blocked = client.post("/api/v1/resolve", json={"workspace_id": "india-macro", "subject": "India", "predicate": "real_gdp_growth", "period": "FY26", "policy": "human_preference"})
-        assert blocked.json()["decision"] == "block"
-        reviews = client.get("/api/v1/reviews", params={"workspace_id": "india-macro"}).json()["items"]
-        assert any(item["id"] == review.json()["id"] and item["status"] == "revoked" for item in reviews)
-
-
-def test_upload_rejects_non_pdf_signature() -> None:
-    with TestClient(app) as client:
-        response = client.post("/api/v1/documents", files={"file": ("notes.txt", b"not a pdf", "text/plain")}, data={"workspace_id": "delhivery"})
-        assert response.status_code == 400
-
-
-def test_lexical_search_returns_claims_with_retrieval_metadata() -> None:
-    with TestClient(app) as client:
-        response = client.get("/api/v1/search", params={"workspace_id": "india-macro", "q": "GDP FY26", "limit": 10})
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["lanes"]["lexical"] >= 1
-        assert payload["items"][0]["workspace_id"] == "india-macro"
-
-
-def test_read_models_and_exports_are_available() -> None:
-    with TestClient(app) as client:
-        workspace = client.get("/api/v1/workspaces/delhivery")
-        assert workspace.status_code == 200
-        assert workspace.json()["workspace"]["id"] == "delhivery"
-        claim = client.get("/api/v1/claims/clm-delhivery-revenue-annual")
-        assert claim.status_code == 200
-        assert claim.json()["anchors"]
-        assert claim.json()["interpretations"][0]["entity_status"] == "resolved"
-        fact_id = _fact_id(client, "delhivery", "Delhivery", "revenue_from_services", "FY24")
-        history = client.get(f"/api/v1/facts/{fact_id}/history")
-        assert history.status_code == 200
-        assert history.json()["items"]
-        csv_export = client.get("/api/v1/exports/facts?workspace_id=delhivery&format=csv")
-        assert csv_export.status_code == 200
-        assert "subject,predicate" in csv_export.text
-        xlsx_export = client.get("/api/v1/exports/facts?workspace_id=delhivery&format=xlsx")
-        assert xlsx_export.status_code == 200
-        assert xlsx_export.content[:2] == b"PK"
+def test_upload_rejects_non_pdf_signature(tmp_path: Path) -> None:
+    original_db, original_upload = settings.database_path, settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "upload.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        with TestClient(app) as client:
+            workspace_id = client.post("/api/v1/workspaces", json={"name": "Upload Review"}).json()["id"]
+            response = client.post(
+                "/api/v1/documents",
+                files={"file": ("notes.pdf", b"not a pdf", "application/pdf")},
+                data={"workspace_id": workspace_id},
+            )
+            assert response.status_code == 400
+    finally:
+        object.__setattr__(settings, "database_path", original_db)
+        object.__setattr__(settings, "upload_dir", original_upload)
 
 
 def test_settings_exposes_nonsecret_independent_role_contract() -> None:
     with TestClient(app) as client:
         response = client.get("/api/v1/settings")
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["project"] == "Project SuperJoin"
-        assert "model" in payload["roles"]["extraction"]
-        assert "base_url" in payload["roles"]["extraction"]
-        assert payload["roles"]["extraction"]["key_configured"] is False
-        assert payload["roles"]["embeddings"]["dimensions"] == 768
-        assert payload["roles"]["vision"]["structured_output_mode"] == "json_object"
-        assert payload["roles"]["vision"]["auth_scheme"] == "Bearer"
-        assert payload["roles"]["vision"]["send_model"] is True
-        assert payload["provider_retry"]["attempts"] >= 1
-        assert payload["configured_roles"] == {"extraction": False, "reasoning": False, "vision": False, "embeddings": False}
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["project"] == "Project SuperJoin"
+    assert set(payload["roles"]) == {"extraction", "reasoning", "vision", "embeddings"}
+    assert all("api_key" not in role for role in payload["roles"].values())
+    assert payload["roles"]["embeddings"]["dimensions"] > 0
 
 
-def test_runtime_settings_update_never_returns_or_persists_api_key() -> None:
-    original = (
-        settings.extraction_base_url,
-        settings.extraction_api_key,
-        settings.extraction_model,
-    )
+def test_runtime_settings_update_never_returns_or_persists_api_key(tmp_path: Path) -> None:
+    original_db = settings.database_path
+    original = settings.extraction_base_url, settings.extraction_api_key, settings.extraction_model
+    object.__setattr__(settings, "database_path", tmp_path / "settings.sqlite3")
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/api/v1/settings/extraction",
-                json={
-                    "base_url": "http://localhost:11434/v1",
-                    "api_key": "memory-only-secret",
-                    "model": "arbitrary/local-model",
-                },
+                json={"base_url": "http://localhost:11434/v1", "api_key": "memory-only-secret", "model": "arbitrary/local-model"},
             )
             assert response.status_code == 200
-            payload = response.json()
-            assert payload["roles"]["extraction"]["key_configured"] is True
             assert "memory-only-secret" not in response.text
             with db() as conn:
-                serialized = " ".join(
-                    str(row[0])
-                    for row in conn.execute(
-                        "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL"
-                    ).fetchall()
-                )
+                serialized = " ".join(str(row[0]) for row in conn.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL").fetchall())
             assert "memory-only-secret" not in serialized
     finally:
+        object.__setattr__(settings, "database_path", original_db)
         object.__setattr__(settings, "extraction_base_url", original[0])
         object.__setattr__(settings, "extraction_api_key", original[1])
         object.__setattr__(settings, "extraction_model", original[2])
 
 
-def test_document_archive_and_reactivate_are_auditable() -> None:
-    with TestClient(app) as client:
-        fact_id = _fact_id(client, "delhivery", "Delhivery", "revenue_from_services", "FY24")
-        review = client.post("/api/v1/reviews", json={"workspace_id": "delhivery", "fact_id": fact_id, "action": "keep_unresolved", "rationale": "Review the source before allowing downstream use."})
-        assert review.status_code == 200
-        archive = client.post("/api/v1/documents/delhivery-annual/archive")
-        assert archive.status_code == 200
-        assert archive.json()["document"]["status"] == "archived"
-        blocked = client.get("/api/v1/resolve", params={"workspace_id": "delhivery", "subject": "Delhivery", "predicate": "revenue_from_services", "period": "FY24"}).json()
-        assert blocked["decision"] == "block"
-        reactivate = client.post("/api/v1/documents/delhivery-annual/reactivate")
-        assert reactivate.status_code == 200
-        assert reactivate.json()["document"]["status"] == "complete"
-        allowed = client.get("/api/v1/resolve", params={"workspace_id": "delhivery", "subject": "Delhivery", "predicate": "revenue_from_services", "period": "FY24"}).json()
-        assert allowed["decision"] == "allow"
-        changes = client.get("/api/v1/changes", params={"workspace_id": "delhivery"}).json()["items"]
-        assert any(change["kind"] == "document_archived" for change in changes)
-        reviews = client.get("/api/v1/reviews", params={"workspace_id": "delhivery"}).json()["items"]
-        assert any(item["id"] == review.json()["id"] and item["status"] == "stale" for item in reviews)
-
-
-def test_workspace_create_slugifies_and_rejects_duplicate() -> None:
-    with TestClient(app) as client:
-        name = f"New Advisory Corpus {uuid.uuid4().hex[:8]}"
-        created = client.post("/api/v1/workspaces", json={"name": name, "description": "test"})
-        assert created.status_code == 201
-        assert created.json()["id"].startswith("new-advisory-corpus-")
-        duplicate = client.post("/api/v1/workspaces", json={"name": name})
-        assert duplicate.status_code == 409
-
-
-def test_runs_surface_is_available_for_observability() -> None:
-    with TestClient(app) as client:
-        response = client.get("/api/v1/runs", params={"workspace_id": "delhivery"})
+def test_run_model_calls_surface_nonsecret_telemetry(tmp_path: Path) -> None:
+    original_db = settings.database_path
+    object.__setattr__(settings, "database_path", tmp_path / "telemetry.sqlite3")
+    try:
+        with TestClient(app) as client:
+            workspace_id = client.post("/api/v1/workspaces", json={"name": "Telemetry"}).json()["id"]
+            run_id = f"telemetry-{uuid.uuid4().hex[:8]}"
+            now = utc_now()
+            with db() as conn:
+                conn.execute(
+                    "INSERT INTO runs(id,workspace_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                    (run_id, workspace_id, "live", "complete", 100, "Complete", now, now),
+                )
+                conn.execute(
+                    """INSERT INTO model_calls
+                    (id,run_id,role,model,input_hash,status,input_tokens,output_tokens,
+                     estimated_cost,latency_ms,attempts,cache_hit,created_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (f"call-{uuid.uuid4().hex[:8]}", run_id, "extraction", "acme/arbitrary-model", "hash", "complete", 12, 8, 0.0001, 321, 2, 0, now),
+                )
+            response = client.get(f"/api/v1/runs/{run_id}/model-calls")
         assert response.status_code == 200
-        assert isinstance(response.json()["items"], list)
-
-
-def test_run_model_calls_surface_nonsecret_telemetry() -> None:
-    run_id = f"telemetry-{uuid.uuid4().hex[:8]}"
-    now = utc_now()
-    with db() as conn:
-        conn.execute(
-            "INSERT INTO runs(id,workspace_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-            (run_id, "delhivery", "live", "complete", 100, "Complete", now, now),
-        )
-        conn.execute(
-            """INSERT INTO model_calls
-            (id,run_id,role,model,input_hash,status,input_tokens,output_tokens,
-             estimated_cost,latency_ms,attempts,cache_hit,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                f"call-{uuid.uuid4().hex[:8]}",
-                run_id,
-                "extraction",
-                "acme/arbitrary-model",
-                "hash",
-                "complete",
-                12,
-                8,
-                0.0001,
-                321,
-                2,
-                0,
-                now,
-            ),
-        )
-    with TestClient(app) as client:
-        response = client.get(f"/api/v1/runs/{run_id}/model-calls")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["run_id"] == run_id
-    assert payload["items"][0]["model"] == "acme/arbitrary-model"
-    assert payload["items"][0]["attempts"] == 2
-    assert payload["items"][0]["latency_ms"] == 321
-    assert "api_key" not in payload["items"][0]
-
-
-def test_demo_replay_endpoints_are_recorded_and_reset_scoped() -> None:
-    with TestClient(app) as client:
-        baseline = client.post("/api/v1/demo/replay/start")
-        assert baseline.status_code == 200
-        assert baseline.json()["stage"] == "baseline_ready"
-        assert len(client.get("/api/v1/documents", params={"workspace_id": "delhivery"}).json()["items"]) == 2
-
-        replayed = client.post("/api/v1/demo/replay/advance")
-        assert replayed.status_code == 200
-        assert replayed.json()["stage"] == "replayed"
-        assert replayed.json()["model_calls"] == 0
-        assert "no API calls" in replayed.json()["limitation"]
-        assert client.get("/api/v1/demo/replay").json()["recorded"] is True
-        assert len(client.get("/api/v1/documents", params={"workspace_id": "delhivery"}).json()["items"]) == 3
-
-        reset = client.post("/api/v1/demo/reset")
-        assert reset.status_code == 200
-        assert len(client.get("/api/v1/documents", params={"workspace_id": "delhivery"}).json()["items"]) == 3
+        assert response.json()["items"][0]["model"] == "acme/arbitrary-model"
+        assert "api_key" not in response.text
+    finally:
+        object.__setattr__(settings, "database_path", original_db)

@@ -27,10 +27,6 @@ from .runtime_settings import ProviderRoleUpdate, apply_provider_update, provide
 
 def startup() -> None:
     init_db()
-    if settings.demo_mode:
-        from .seed import seed_demo
-
-        seed_demo()
 
 
 @asynccontextmanager
@@ -67,7 +63,7 @@ def _public_endpoint(value: str) -> str:
 def health() -> dict[str, Any]:
     with db() as conn:
         conn.execute("SELECT 1").fetchone()
-    return {"status": "ok", "project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": available()}
+    return {"status": "ok", "project": "Project SuperJoin", "provider_configured": available()}
 
 
 @app.get("/api/v1/workspaces")
@@ -95,6 +91,103 @@ def create_workspace(payload: dict[str, Any]) -> dict[str, Any]:
     return row_to_dict(row) or {"id": workspace_id, "name": name}
 
 
+@app.delete("/api/v1/workspaces/{workspace_id}")
+def delete_workspace(workspace_id: str) -> dict[str, Any]:
+    """Delete one local workspace after the UI obtains explicit confirmation."""
+
+    with db() as conn:
+        workspace = conn.execute(
+            "SELECT id,name FROM workspaces WHERE id=?", (workspace_id,)
+        ).fetchone()
+        if not workspace:
+            raise HTTPException(404, "Workspace not found")
+        active = conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE workspace_id=? AND status IN ('queued','processing')",
+            (workspace_id,),
+        ).fetchone()[0]
+        if active:
+            raise HTTPException(409, "Cancel or finish active runs before deleting this workspace")
+        stored_paths = [
+            str(row[0])
+            for row in conn.execute(
+                "SELECT stored_path FROM documents WHERE workspace_id=? AND stored_path IS NOT NULL",
+                (workspace_id,),
+            ).fetchall()
+        ]
+        claim_ids = "SELECT id FROM claims WHERE workspace_id=?"
+        fact_ids = "SELECT id FROM facts WHERE workspace_id=?"
+        fact_version_ids = f"SELECT id FROM fact_versions WHERE fact_id IN ({fact_ids})"
+        document_ids = "SELECT id FROM documents WHERE workspace_id=?"
+        run_ids = "SELECT id FROM runs WHERE workspace_id=?"
+        space_ids = "SELECT id FROM embedding_spaces WHERE workspace_id=?"
+        entity_ids = "SELECT id FROM entities WHERE workspace_id=?"
+        predicate_ids = "SELECT id FROM predicates WHERE workspace_id=?"
+        conn.execute("DELETE FROM claims_fts WHERE workspace_id=?", (workspace_id,))
+        conn.execute(
+            f"DELETE FROM embeddings WHERE claim_id IN ({claim_ids}) OR space_id IN ({space_ids})",
+            (workspace_id, workspace_id),
+        )
+        conn.execute(
+            f"DELETE FROM fact_memberships WHERE claim_id IN ({claim_ids}) OR fact_version_id IN ({fact_version_ids})",
+            (workspace_id, workspace_id),
+        )
+        conn.execute("DELETE FROM reviews WHERE workspace_id=?", (workspace_id,))
+        conn.execute("DELETE FROM relationships WHERE workspace_id=?", (workspace_id,))
+        conn.execute("DELETE FROM changes WHERE workspace_id=?", (workspace_id,))
+        conn.execute(
+            f"DELETE FROM entity_aliases WHERE entity_id IN ({entity_ids})", (workspace_id,)
+        )
+        conn.execute(
+            f"DELETE FROM predicate_aliases WHERE predicate_id IN ({predicate_ids})",
+            (workspace_id,),
+        )
+        conn.execute("DELETE FROM registry_decisions WHERE workspace_id=?", (workspace_id,))
+        conn.execute(
+            f"DELETE FROM claim_interpretations WHERE claim_id IN ({claim_ids})",
+            (workspace_id,),
+        )
+        conn.execute(
+            f"DELETE FROM fact_versions WHERE fact_id IN ({fact_ids})", (workspace_id,)
+        )
+        conn.execute("DELETE FROM facts WHERE workspace_id=?", (workspace_id,))
+        conn.execute(
+            f"DELETE FROM claim_evidence WHERE claim_id IN ({claim_ids})",
+            (workspace_id,),
+        )
+        conn.execute(
+            f"DELETE FROM extraction_batches WHERE document_id IN ({document_ids})",
+            (workspace_id,),
+        )
+        conn.execute(
+            f"DELETE FROM model_calls WHERE run_id IN ({run_ids})", (workspace_id,)
+        )
+        conn.execute(
+            f"DELETE FROM run_stage_timings WHERE run_id IN ({run_ids})", (workspace_id,)
+        )
+        conn.execute(f"DELETE FROM run_events WHERE run_id IN ({run_ids})", (workspace_id,))
+        conn.execute("DELETE FROM runs WHERE workspace_id=?", (workspace_id,))
+        conn.execute("DELETE FROM claims WHERE workspace_id=?", (workspace_id,))
+        conn.execute(
+            f"DELETE FROM evidence_anchors WHERE document_id IN ({document_ids})",
+            (workspace_id,),
+        )
+        conn.execute(
+            f"DELETE FROM page_artifacts WHERE document_id IN ({document_ids})",
+            (workspace_id,),
+        )
+        conn.execute("DELETE FROM documents WHERE workspace_id=?", (workspace_id,))
+        conn.execute("DELETE FROM embedding_spaces WHERE workspace_id=?", (workspace_id,))
+        conn.execute("DELETE FROM entities WHERE workspace_id=?", (workspace_id,))
+        conn.execute("DELETE FROM predicates WHERE workspace_id=?", (workspace_id,))
+        conn.execute("DELETE FROM workspaces WHERE id=?", (workspace_id,))
+    root = settings.upload_dir.resolve()
+    for stored_path in stored_paths:
+        path = Path(stored_path).resolve()
+        if path.is_relative_to(root) and path.is_file():
+            path.unlink()
+    return {"status": "deleted", "id": workspace_id, "name": workspace["name"]}
+
+
 @app.get("/api/v1/workspaces/{workspace_id}")
 def workspace_detail(workspace_id: str) -> dict[str, Any]:
     return overview(workspace_id)
@@ -113,7 +206,23 @@ def overview(workspace_id: str | None = None) -> dict[str, Any]:
             counts[table] = conn.execute(f"SELECT COUNT(*) AS count FROM {table} WHERE workspace_id=?{fact_filter}", (workspace_id,)).fetchone()["count"]
         status_rows = conn.execute("SELECT status,COUNT(*) AS count FROM facts WHERE workspace_id=? AND active=1 GROUP BY status", (workspace_id,)).fetchall()
         latest = conn.execute("SELECT * FROM changes WHERE workspace_id=? ORDER BY created_at DESC LIMIT 8", (workspace_id,)).fetchall()
-    return {"workspace": workspace, "counts": counts, "statuses": {row["status"]: row["count"] for row in status_rows}, "latest_changes": rows_to_dicts(latest), "demo": settings.demo_mode}
+        grounded = conn.execute(
+            "SELECT COUNT(*) FROM claims WHERE workspace_id=? AND grounding_status='grounded'",
+            (workspace_id,),
+        ).fetchone()[0]
+        relationship_rows = conn.execute(
+            "SELECT relationship_type,COUNT(*) AS count FROM relationships WHERE workspace_id=? GROUP BY relationship_type",
+            (workspace_id,),
+        ).fetchall()
+    return {
+        "workspace": workspace,
+        "counts": {**counts, "grounded_claims": grounded},
+        "statuses": {row["status"]: row["count"] for row in status_rows},
+        "relationship_types": {
+            row["relationship_type"]: row["count"] for row in relationship_rows
+        },
+        "latest_changes": rows_to_dicts(latest),
+    }
 
 
 @app.get("/api/v1/documents")
@@ -150,9 +259,12 @@ def document_detail(document_id: str) -> dict[str, Any]:
 @app.post("/api/v1/documents/{document_id}/archive")
 def archive_document(document_id: str) -> dict[str, Any]:
     try:
-        return set_document_archived(document_id, True)
+        result = set_document_archived(document_id, True)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+    assess_relationships(result["workspace_id"])
+    rebuild_workspace(result["workspace_id"], advance_revision=False)
+    return result
 
 
 @app.post("/api/v1/documents/{document_id}/reactivate")
@@ -162,7 +274,7 @@ def reactivate_document(document_id: str) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
     assess_relationships(result["workspace_id"])
-    rebuild_workspace(result["workspace_id"])
+    rebuild_workspace(result["workspace_id"], advance_revision=False)
     return result
 
 
@@ -517,64 +629,6 @@ def _export_cell(key: str, value: Any) -> Any:
     return value
 
 
-@app.get("/api/v1/cases")
-def cases() -> dict[str, Any]:
-    if not settings.demo_mode:
-        return {"items": []}
-    from .demo_data import DEMO_CASES, DEMO_RELATIONSHIPS
-
-    items = [dict(item) for item in DEMO_CASES]
-    relationships = {item["id"]: item for item in DEMO_RELATIONSHIPS}
-    with db() as conn:
-        for item in items:
-            recorded = relationships.get(item.get("relationship_id"))
-            if not recorded:
-                continue
-            row = conn.execute(
-                """SELECT id FROM relationships
-                WHERE workspace_id=? AND relationship_type=?
-                  AND ((claim_a=? AND claim_b=?) OR (claim_a=? AND claim_b=?))
-                LIMIT 1""",
-                (
-                    recorded["workspace_id"],
-                    recorded["relationship_type"],
-                    recorded["claim_a"],
-                    recorded["claim_b"],
-                    recorded["claim_b"],
-                    recorded["claim_a"],
-                ),
-            ).fetchone()
-            item["relationship_id"] = row["id"] if row else None
-    return {"items": items}
-
-
-@app.get("/api/v1/demo/replay")
-def demo_replay() -> dict[str, Any]:
-    if not settings.demo_mode:
-        raise HTTPException(404, "Demo Mode is disabled")
-    from .seed import replay_status
-
-    return replay_status()
-
-
-@app.post("/api/v1/demo/replay/start")
-def demo_replay_start() -> dict[str, Any]:
-    if not settings.demo_mode:
-        raise HTTPException(404, "Demo Mode is disabled")
-    from .seed import start_replay
-
-    return start_replay()
-
-
-@app.post("/api/v1/demo/replay/advance")
-def demo_replay_advance() -> dict[str, Any]:
-    if not settings.demo_mode:
-        raise HTTPException(404, "Demo Mode is disabled")
-    from .seed import advance_replay
-
-    return advance_replay()
-
-
 def _resolve_payload(payload: dict[str, Any]) -> dict[str, Any]:
     workspace_id = _workspace_or_default(payload.get("workspace_id"))
     subject = str(payload.get("subject") or "")
@@ -641,7 +695,6 @@ def settings_view() -> dict[str, Any]:
     }
     return {
         "project": "Project SuperJoin",
-        "demo_mode": settings.demo_mode,
         "provider_configured": available(),
         "roles": roles,
         "configured_roles": {name: role["configured"] for name, role in roles.items()},
@@ -684,17 +737,6 @@ def test_provider_settings(role: str) -> dict[str, Any]:
         return probe(role)
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc
-
-
-@app.post("/api/v1/demo/reset")
-def reset_demo() -> dict[str, str]:
-    if not settings.demo_mode:
-        raise HTTPException(404, "Demo Mode is disabled")
-    from .seed import clear_demo_workspace_data, seed_demo
-
-    clear_demo_workspace_data()
-    seed_demo()
-    return {"status": "reset"}
 
 
 web_dist = Path(__file__).resolve().parents[1] / "web" / "dist"

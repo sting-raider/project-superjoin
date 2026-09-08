@@ -325,20 +325,6 @@ CREATE TABLE IF NOT EXISTS model_cache (
   created_at TEXT NOT NULL,
   UNIQUE(role, model, input_hash)
 );
-CREATE TABLE IF NOT EXISTS demo_replay_state (
-  id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL,
-  stage TEXT NOT NULL,
-  baseline_document_ids_json TEXT NOT NULL DEFAULT '[]',
-  added_document_ids_json TEXT NOT NULL DEFAULT '[]',
-  original_runtime_ms REAL,
-  original_cost_usd REAL,
-  replay_runtime_ms REAL,
-  replay_cost_usd REAL,
-  model_calls INTEGER NOT NULL DEFAULT 0,
-  limitation TEXT,
-  updated_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS budget_ledger (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   limit_usd REAL NOT NULL,
@@ -432,6 +418,7 @@ def init_db() -> None:
 def _ensure_columns(conn: sqlite3.Connection) -> None:
     """Add small telemetry columns when a pre-upgrade local DB is reused."""
 
+    conn.execute("DROP TABLE IF EXISTS demo_replay_state")
     additions = {
         "model_calls": {
             "request_chars": "INTEGER",
