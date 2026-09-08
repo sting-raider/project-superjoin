@@ -600,8 +600,6 @@ def relationships(workspace_id: str | None = None, relationship_type: str | None
             params,
         ).fetchall()
     items = rows_to_dicts(rows)
-    for item in items:
-        item["dimensions"] = json.loads(item.get("dimensions_json") or "{}")
     return {"items": items, "count": len(items)}
 
 
@@ -666,8 +664,6 @@ def changes(workspace_id: str | None = None) -> dict[str, Any]:
             (workspace_id,),
         ).fetchall()
     items = rows_to_dicts(rows)
-    for item in items:
-        item["details"] = json.loads(item.get("details_json") or "{}")
     return {"items": items, "count": len(items)}
 
 
