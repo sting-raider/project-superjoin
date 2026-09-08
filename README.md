@@ -82,7 +82,8 @@ prepare a local corpus and validate hashes/page counts. See
 Video: pending final recording. The intended 2:55 walkthrough covers the four
 assignment cases, the evidence inspector, Knowledge Diff, Trust Gate, and the
 no-key setup. Replay timing and any recorded provider output will be labeled
-as replay rather than presented as live model work.
+as replay rather than presented as live model work. The reproducible capture
+steps are in [`docs/VIDEO_DEMO_SCRIPT.md`](docs/VIDEO_DEMO_SCRIPT.md).
 
 ## Approach
 
