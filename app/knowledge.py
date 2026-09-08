@@ -31,14 +31,21 @@ def _id(prefix: str) -> str:
 
 
 def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
-    """Compare only claims sharing an exact subject/predicate lane.
+    """Compare relevant claims sharing an exact subject/predicate lane.
 
-    Broad semantic candidate retrieval can be layered on later; this bounded
-    deterministic lane guarantees that obvious same-proposition pairs are
-    never lost to a top-k cutoff.
+    Incremental production runs compare new claims with a bounded, ranked set
+    from other documents. A run-less maintenance rebuild retains exhaustive
+    deterministic coverage for small fixtures and explicit offline work.
     """
 
     with db() as conn:
+        run_document_id = None
+        if run_id:
+            run = conn.execute(
+                "SELECT document_id FROM runs WHERE id=? AND workspace_id=?",
+                (run_id, workspace_id),
+            ).fetchone()
+            run_document_id = run["document_id"] if run else None
         rows = conn.execute(
             """SELECT c.*,ci.entity_id,ci.predicate_id,
             e.canonical_name,p.key AS canonical_predicate
@@ -74,32 +81,74 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
         )
         groups.setdefault(identity, []).append(claim)
     inserted = 0
+    semantic_calls = 0
     for group in groups.values():
-        if len(group) > 250:
-            group = group[-250:]
-        for index, left in enumerate(group):
-            for right in group[index + 1 :]:
-                claim_a, claim_b = sorted((left, right), key=lambda item: item["id"])
-                if (claim_a["id"], claim_b["id"]) in existing_pairs:
-                    continue
-                relationship_type, reason, dimensions, confidence = compare_claim_pair(claim_a, claim_b)
-                if relationship_type == "UNRELATED" or _needs_semantic_relationship_review(claim_a, claim_b, relationship_type):
+        for left, right in _relationship_pairs(group, run_document_id):
+            claim_a, claim_b = sorted((left, right), key=lambda item: item["id"])
+            if (claim_a["id"], claim_b["id"]) in existing_pairs:
+                continue
+            relationship_type, reason, dimensions, confidence = compare_claim_pair(claim_a, claim_b)
+            if _needs_semantic_relationship_review(claim_a, claim_b, relationship_type):
+                semantic = None
+                if semantic_calls < settings.relationship_semantic_limit:
+                    semantic_calls += 1
                     semantic = _semantic_relationship(claim_a, claim_b, run_id)
-                    if semantic is None and relationship_type == "UNRELATED":
-                        continue
-                    if semantic is not None:
-                        relationship_type, reason, dimensions, confidence = semantic
-                relationship_id = "rel-" + hashlib.sha256(f"{claim_a['id']}:{claim_b['id']}:{relationship_type}".encode()).hexdigest()[:16]
-                with db() as conn:
-                    conn.execute("DELETE FROM relationships WHERE claim_a=? AND claim_b=?", (claim_a["id"], claim_b["id"]))
-                    cursor = conn.execute(
-                        """INSERT OR IGNORE INTO relationships
-                        (id,workspace_id,claim_a,claim_b,relationship_type,reason,dimensions_json,confidence,created_at)
-                        VALUES(?,?,?,?,?,?,?,?,?)""",
-                        (relationship_id, workspace_id, claim_a["id"], claim_b["id"], relationship_type, reason, json.dumps(dimensions), confidence, utc_now()),
-                    )
-                    inserted += cursor.rowcount
+                if semantic is None and relationship_type == "UNRELATED":
+                    continue
+                if semantic is not None:
+                    relationship_type, reason, dimensions, confidence = semantic
+            elif relationship_type == "UNRELATED":
+                continue
+            relationship_id = "rel-" + hashlib.sha256(f"{claim_a['id']}:{claim_b['id']}:{relationship_type}".encode()).hexdigest()[:16]
+            with db() as conn:
+                conn.execute("DELETE FROM relationships WHERE claim_a=? AND claim_b=?", (claim_a["id"], claim_b["id"]))
+                cursor = conn.execute(
+                    """INSERT OR IGNORE INTO relationships
+                    (id,workspace_id,claim_a,claim_b,relationship_type,reason,dimensions_json,confidence,created_at)
+                    VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (relationship_id, workspace_id, claim_a["id"], claim_b["id"], relationship_type, reason, json.dumps(dimensions), confidence, utc_now()),
+                )
+                inserted += cursor.rowcount
     return inserted
+
+
+def _relationship_pairs(
+    group: list[dict[str, Any]], run_document_id: str | None
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    if run_document_id is None:
+        bounded = group[-250:]
+        return [
+            (left, right)
+            for index, left in enumerate(bounded)
+            for right in bounded[index + 1 :]
+        ]
+    new_claims = [claim for claim in group if claim["document_id"] == run_document_id]
+    prior_claims = [claim for claim in group if claim["document_id"] != run_document_id]
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    limit = max(1, settings.relationship_candidate_limit)
+    for claim in new_claims:
+        ranked = sorted(
+            prior_claims,
+            key=lambda candidate: _relationship_candidate_score(claim, candidate),
+            reverse=True,
+        )
+        pairs.extend((claim, candidate) for candidate in ranked[:limit])
+    return pairs
+
+
+def _relationship_candidate_score(a: dict[str, Any], b: dict[str, Any]) -> tuple[int, str]:
+    score = 0
+    if a.get("period") and a.get("period") == b.get("period"):
+        score += 8
+    elif not a.get("period") or not b.get("period"):
+        score += 3
+    if a.get("modality") == b.get("modality"):
+        score += 2
+    if a.get("normalized_value") == b.get("normalized_value"):
+        score += 2
+    if a.get("unit") == b.get("unit"):
+        score += 1
+    return score, str(b.get("created_at") or "")
 
 
 def _semantic_relationship(a: Any, b: Any, run_id: str | None) -> tuple[str, str, dict[str, Any], float] | None:
@@ -158,9 +207,9 @@ def relationship_cache_fingerprint(a: Any, b: Any) -> str:
 
 
 def _needs_semantic_relationship_review(a: Any, b: Any, relationship_type: str) -> bool:
-    if relationship_type != "CONTRADICTS":
-        return False
-    if a["value_type"] == "semantic" or b["value_type"] == "semantic":
+    if relationship_type == "CONTRADICTS" and (
+        a["value_type"] == "semantic" or b["value_type"] == "semantic"
+    ):
         return True
     evidence_parts = [
         str(item.get("text") or "")
@@ -168,7 +217,10 @@ def _needs_semantic_relationship_review(a: Any, b: Any, relationship_type: str) 
         for item in _evidence_items(claim.get("evidence_json"))
     ]
     evidence = " ".join(evidence_parts).casefold()
-    return any(marker in evidence for marker in _CONTEXTUAL_RELATIONSHIP_MARKERS)
+    has_context_marker = any(
+        marker in evidence for marker in _CONTEXTUAL_RELATIONSHIP_MARKERS
+    )
+    return relationship_type in {"CONTRADICTS", "UNRELATED"} and has_context_marker
 
 
 def _evidence_items(value: Any) -> list[dict[str, Any]]:

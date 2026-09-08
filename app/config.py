@@ -71,6 +71,8 @@ class Settings:
     extraction_hint_limit: int = _int_env("EXTRACTION_HINT_LIMIT", 24)
     extraction_claims_per_batch: int = _int_env("EXTRACTION_CLAIMS_PER_BATCH", 8)
     reasoning_concurrency: int = _int_env("REASONING_CONCURRENCY", 2)
+    relationship_candidate_limit: int = _int_env("RELATIONSHIP_CANDIDATE_LIMIT", 12)
+    relationship_semantic_limit: int = _int_env("RELATIONSHIP_SEMANTIC_LIMIT", 24)
     vision_concurrency: int = _int_env("VISION_CONCURRENCY", 2)
     embedding_concurrency: int = _int_env("EMBEDDING_CONCURRENCY", 2)
     embedding_batch_size: int = _int_env("EMBEDDING_BATCH_SIZE", 128)

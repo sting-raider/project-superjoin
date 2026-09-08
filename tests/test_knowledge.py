@@ -3,7 +3,13 @@ from pathlib import Path
 
 from app.config import settings
 from app.db import db, init_db, utc_now
-from app.knowledge import assess_relationships, compare_claim_pair, rebuild_workspace, resolve_fact
+from app.knowledge import (
+    _relationship_pairs,
+    assess_relationships,
+    compare_claim_pair,
+    rebuild_workspace,
+    resolve_fact,
+)
 from app.providers import ProviderResult
 
 
@@ -237,3 +243,32 @@ def test_reasoning_role_can_resolve_deterministic_context_abstention(monkeypatch
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_incremental_relationships_only_rank_prior_documents() -> None:
+    new = {
+        "id": "new",
+        "document_id": "new-doc",
+        "period": "FY26",
+        "modality": "forecast",
+        "normalized_value": "0.06",
+        "unit": "%",
+    }
+    same_document = {**new, "id": "new-2"}
+    prior = [
+        {
+            **new,
+            "id": f"old-{index}",
+            "document_id": f"old-doc-{index}",
+            "period": "FY26" if index < 2 else "FY25",
+            "created_at": f"2026-01-{index + 1:02d}",
+        }
+        for index in range(20)
+    ]
+
+    pairs = _relationship_pairs([new, same_document, *prior], "new-doc")
+
+    assert len(pairs) == settings.relationship_candidate_limit * 2
+    assert all(left["document_id"] == "new-doc" for left, _ in pairs)
+    assert all(right["document_id"] != "new-doc" for _, right in pairs)
+    assert {right["id"] for _, right in pairs[:2]} == {"old-0", "old-1"}
