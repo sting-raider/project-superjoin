@@ -137,6 +137,7 @@ def test_uncovered_high_signal_page_gets_bounded_semantic_recovery(monkeypatch) 
     recovered = _recover_uncovered_pages(batch, existing, "unseen.pdf", None)
 
     assert [call[1][0]["pdf_page"] for call in calls] == [32, 33]
+    assert all(len(call[0]) == 1 for call in calls)
     assert {claim["evidence"]["pdf_page"] for claim in recovered} == {31, 32, 33}
 
 

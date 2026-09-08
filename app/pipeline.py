@@ -596,7 +596,7 @@ def _recover_uncovered_pages(
         try:
             recovered.extend(
                 _model_extract(
-                    hints_by_page[page],
+                    hints_by_page[page][:1],
                     filename,
                     run_id,
                     source,
