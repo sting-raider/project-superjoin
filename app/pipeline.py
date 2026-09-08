@@ -36,7 +36,8 @@ VISION_PROMPT_VERSION = "vision-v2-grounded"
 
 _STAGE_BANDS = {
     "parse": (0, 12),
-    "extraction": (12, 62),
+    "vision": (12, 20),
+    "extraction": (20, 62),
     "grounding": (62, 70),
     "registry": (70, 82),
     "relationships": (82, 94),
@@ -45,6 +46,8 @@ _STAGE_BANDS = {
 
 _extraction_executor_lock = threading.Lock()
 _extraction_executors: dict[int, ThreadPoolExecutor] = {}
+_vision_executor_lock = threading.Lock()
+_vision_executors: dict[int, ThreadPoolExecutor] = {}
 _run_futures_lock = threading.Lock()
 _run_extraction_futures: dict[str, set[Any]] = {}
 
@@ -103,12 +106,32 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         _finish_stage(run_id, "parse", {"pages": len(parsed.pages)})
         _raise_if_cancelled(run_id)
         all_candidates: list[dict[str, Any]] = []
+        visual_pages: list[int] = []
         for page in parsed.pages:
             _raise_if_cancelled(run_id)
             all_candidates.extend(candidate_claims(page))
             if "low-native-text" in page.flags or "no-word-geometry" in page.flags:
-                visual = _vision_extract_page(data, page.index, filename, run_id)
-                all_candidates.extend(visual)
+                visual_pages.append(page.index)
+        if visual_pages:
+            _start_stage(
+                run_id,
+                "vision",
+                len(visual_pages),
+                f"Inspecting 0 of {len(visual_pages)} visual pages",
+            )
+            visual_candidates = _extract_visual_pages(
+                data, visual_pages, filename, run_id
+            )
+            all_candidates.extend(visual_candidates)
+            _finish_stage(
+                run_id,
+                "vision",
+                {
+                    "pages_inspected": len(visual_pages),
+                    "claims_extracted": len(visual_candidates),
+                    **_model_role_counts(run_id, {"vision"}),
+                },
+            )
         batches = build_extraction_batches(parsed.pages, all_candidates)
         if available("extraction") and batches:
             _start_stage(
@@ -499,6 +522,52 @@ def _extraction_executor() -> ThreadPoolExecutor:
                 thread_name_prefix="extract-global",
             ),
         )
+
+
+def _vision_executor() -> ThreadPoolExecutor:
+    """Share one bounded vision queue across all concurrently uploaded PDFs."""
+
+    workers = max(1, settings.vision_concurrency)
+    with _vision_executor_lock:
+        return _vision_executors.setdefault(
+            workers,
+            ThreadPoolExecutor(
+                max_workers=workers,
+                thread_name_prefix="vision-global",
+            ),
+        )
+
+
+def _extract_visual_pages(
+    pdf_bytes: bytes,
+    page_indices: list[int],
+    filename: str,
+    run_id: str,
+) -> list[dict[str, Any]]:
+    executor = _vision_executor()
+    futures = {
+        executor.submit(_vision_extract_page, pdf_bytes, index, filename, run_id): index
+        for index in page_indices
+    }
+    results: dict[int, list[dict[str, Any]]] = {}
+    for future in as_completed(futures):
+        _raise_if_cancelled(run_id)
+        index = futures[future]
+        results[index] = future.result()
+        current = len(results)
+        _update_stage(
+            run_id,
+            "vision",
+            current,
+            len(page_indices),
+            f"Inspected {current} of {len(page_indices)} visual pages",
+            {
+                "pages_inspected": current,
+                "claims_extracted": sum(len(items) for items in results.values()),
+                **_model_role_counts(run_id, {"vision"}),
+            },
+        )
+    return [claim for index in sorted(results) for claim in results[index]]
 
 
 def _track_extraction_future(run_id: str, future: Any) -> None:

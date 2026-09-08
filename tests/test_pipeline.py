@@ -1,3 +1,6 @@
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app import pipeline
@@ -9,6 +12,7 @@ from app.pipeline import (
     _claim_id,
     _deterministically_normalized,
     _extract_document_batches,
+    _extract_visual_pages,
     _insert_claims,
     _model_extract,
     _RunCancelled,
@@ -409,6 +413,35 @@ def test_no_key_visual_fallback_does_not_render(monkeypatch) -> None:
 
     monkeypatch.setattr("app.pipeline._render_page", render_must_not_run)
     assert _vision_extract_page(b"pdf", 0, "source.pdf", "run") == []
+
+
+def test_visual_pages_use_one_bounded_shared_executor(monkeypatch) -> None:
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def fake_visual(_pdf, page_index, _filename, _run_id):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return [{"page": page_index}]
+
+    executor = ThreadPoolExecutor(max_workers=2)
+    monkeypatch.setattr("app.pipeline._vision_executor", lambda: executor)
+    monkeypatch.setattr("app.pipeline._vision_extract_page", fake_visual)
+    monkeypatch.setattr("app.pipeline._update_stage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("app.pipeline._model_role_counts", lambda *_args: {})
+    try:
+        claims = _extract_visual_pages(b"pdf", [3, 1, 2, 0], "source.pdf", "run")
+    finally:
+        executor.shutdown()
+
+    assert peak == 2
+    assert [claim["page"] for claim in claims] == [0, 1, 2, 3]
 
 
 def test_cancelled_run_cannot_publish_claims(tmp_path: Path) -> None:
