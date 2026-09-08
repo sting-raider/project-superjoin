@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "revision": "622bd0c",
+  "captured_at": "2026-09-08T11:24:00Z",
+  "provider_profile": {
+    "extraction_base_url": "https://api.deepseek.com",
+    "extraction_model": "deepseek-v4-flash",
+    "reasoning_model": "deepseek-v4-flash",
+    "vision_model": "deepseek-v4-flash-vision-exp",
+    "embedding_model": "nvidia/nemotron-3-embed-1b",
+    "extraction_concurrency": 4,
+    "thinking": "disabled through generic extra-body configuration",
+    "note": "The current deployment uses independent role routes. Credentials are excluded. DeepSeek is configuration, not production branching."
+  },
+  "runs": [
+    {
+      "fixture": "1-page synthetic SaaS update",
+      "run_ids": ["run-27bb6b640a1d"],
+      "status": "complete",
+      "aggregate_processing_seconds": 2.321,
+      "logical_model_calls": 1,
+      "http_attempts": 1,
+      "extraction_calls": 1,
+      "accepted_claims": 2,
+      "pages_with_claims": 1,
+      "max_evidence_page": 1,
+      "input_characters": 809,
+      "input_tokens": 471,
+      "output_tokens": 187,
+      "quality_observation": "ARR and NRR retained the Nimbus Cloud entity and FY26 context with verbatim grounded evidence."
+    },
+    {
+      "fixture": "27-page earnings presentation",
+      "run_ids": ["run-e9311e7b28ea"],
+      "status": "complete",
+      "aggregate_processing_seconds": 50.529,
+      "logical_model_calls": 18,
+      "http_attempts": 18,
+      "extraction_calls": 9,
+      "vision_calls": 4,
+      "registry_embedding_calls": 1,
+      "registry_reasoning_calls": 4,
+      "accepted_claims": 28,
+      "pages_with_claims": 12,
+      "max_evidence_page": 25,
+      "input_characters": 2203315,
+      "input_tokens": 20103,
+      "output_tokens": 4696,
+      "quality_observation": "Every extraction batch completed once with no retry. Four pages selected by the pre-existing quality router used the independently configured vision role."
+    },
+    {
+      "fixture": "100-page annual report",
+      "run_ids": ["run-1601b18fae85", "run-885562fcd4a1"],
+      "status": "complete_after_checkpoint_resume",
+      "aggregate_processing_seconds": 326.626,
+      "logical_model_calls": 81,
+      "http_attempts": 83,
+      "unique_extraction_batches": 68,
+      "extraction_call_invocations": 76,
+      "vision_calls": 0,
+      "registry_embedding_calls": 1,
+      "registry_reasoning_calls": 4,
+      "accepted_claims": 118,
+      "pages_with_claims": 56,
+      "max_evidence_page": 100,
+      "input_characters": 762385,
+      "input_tokens": 221022,
+      "output_tokens": 33900,
+      "failure_observation": "The cold attempt retained 60 successful checkpoints and recorded seven IncompleteRead responses plus one remote disconnect. The provider transport was corrected to retry HTTP protocol interruptions; the resume processed only the remaining eight batches.",
+      "quality_observation": "The generic extractor published 118 accepted grounded claims, 101 distinct predicates, and evidence through page 100."
+    }
+  ],
+  "comparisons": {
+    "provider_change_warning": "These wall-time comparisons include a provider change and are user-visible deployment measurements, not an architecture-only ablation.",
+    "against_original_100_page_baseline": {
+      "wall_time_factor": 12.433,
+      "logical_call_factor": 23.358,
+      "baseline_status": "failed",
+      "deepseek_status": "complete"
+    },
+    "against_optimized_nvidia_100_page_chain": {
+      "wall_time_factor": 5.262,
+      "logical_call_factor": 3.407,
+      "both_status": "complete"
+    }
+  }
+}

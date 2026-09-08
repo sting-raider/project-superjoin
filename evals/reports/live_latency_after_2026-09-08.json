@@ -1,0 +1,109 @@
+{
+  "schema_version": "1.0",
+  "revision": "abb1f99",
+  "captured_at": "2026-09-08T10:49:00Z",
+  "provider_profile": {
+    "extraction_model": "nvidia/nemotron-3-super-120b-a12b",
+    "reasoning_model": "nvidia/nemotron-3-super-120b-a12b",
+    "embedding_model": "nvidia/nemotron-3-embed-1b",
+    "extraction_output_limit": 2400,
+    "extraction_batch_pages": 3,
+    "extraction_batch_chars": 12000,
+    "extraction_claim_limit": 4,
+    "extraction_hint_limit": 16,
+    "extraction_concurrency": 1,
+    "note": "Credentials are excluded. Thinking was disabled through the generic role extra-body setting; no NVIDIA-specific production branch exists."
+  },
+  "comparisons": [
+    {
+      "fixture": "1-page synthetic SaaS update",
+      "before_run_ids": ["run-32db014e27ac"],
+      "after_run_ids": ["run-5e607572e0d1"],
+      "before": {
+        "status": "complete",
+        "elapsed_seconds": 30.968,
+        "logical_model_calls": 4,
+        "accepted_claims": 2
+      },
+      "after": {
+        "status": "complete",
+        "elapsed_seconds": 3.053,
+        "logical_model_calls": 2,
+        "http_attempts": 2,
+        "accepted_claims": 2,
+        "pages_with_claims": 1,
+        "max_evidence_page": 1
+      },
+      "improvement": {
+        "wall_time_factor": 10.143,
+        "logical_call_factor": 2.0
+      },
+      "quality_observation": "Both ARR and NRR were grounded with the explicit Nimbus Cloud subject and FY26 period."
+    },
+    {
+      "fixture": "27-page earnings presentation",
+      "before_run_ids": ["run-65a735224021"],
+      "after_run_ids": ["run-5c1fb99ae20a", "run-a3674e56997f"],
+      "before": {
+        "status": "processing_at_capture",
+        "elapsed_seconds_lower_bound": 2004.748,
+        "logical_model_calls_at_capture": 1693,
+        "persisted_candidates": 410
+      },
+      "after": {
+        "status": "complete_after_checkpoint_resume",
+        "aggregate_processing_seconds": 145.617,
+        "logical_model_calls": 21,
+        "http_attempts": 31,
+        "accepted_claims": 35,
+        "distinct_subjects": 22,
+        "distinct_predicates": 22,
+        "pages_with_claims": 13,
+        "max_evidence_page": 25
+      },
+      "improvement": {
+        "wall_time_factor_lower_bound": 13.767,
+        "logical_call_factor": 80.619
+      },
+      "quality_observation": "The generic bounded extractor published grounded claims through page 25. The first attempt retained seven completed batches; retry processed only the two throttled batches."
+    },
+    {
+      "fixture": "100-page annual report",
+      "before_run_ids": ["run-a25ccea1bc35"],
+      "after_run_ids": [
+        "run-04705fa2b589",
+        "run-cdb9210d49fe",
+        "run-d06fa0692198",
+        "run-f500cb3124fb",
+        "run-ce6b5af25d9c",
+        "run-bcdb1dab868d",
+        "run-bf41c40639aa"
+      ],
+      "before": {
+        "status": "failed",
+        "elapsed_seconds": 4061.039,
+        "logical_model_calls": 1892,
+        "persisted_candidates": 2958,
+        "failure": "concurrent predicate registry uniqueness failure"
+      },
+      "after": {
+        "status": "complete_after_checkpoint_recovery",
+        "aggregate_processing_seconds": 1718.6,
+        "logical_model_calls": 276,
+        "http_attempts": 511,
+        "accepted_claims": 140,
+        "distinct_subjects": 47,
+        "distinct_predicates": 102,
+        "pages_with_claims": 58,
+        "max_evidence_page": 100,
+        "complete_extraction_checkpoints": 68
+      },
+      "improvement": {
+        "wall_time_factor": 2.363,
+        "logical_call_factor": 6.855
+      },
+      "quality_observation": "The final result covers the entire document and includes grounded claims on pages 81-100. Sustained provider 429s caused 201 failed logical calls and most of the 511 HTTP attempts. The pipeline preserved every successful checkpoint and eventually completed without lowering concurrency or coverage guarantees."
+    }
+  ],
+  "conclusion": "Measured improvements exceed 10x wall time on the 1-page and 27-page inputs and exceed 10x logical-call reduction on the 27-page input. The 100-page run completed where the baseline failed, with 2.36x lower aggregate processing time and 6.86x fewer logical calls; it did not meet the 10x target under observed NVIDIA throttling."
+}

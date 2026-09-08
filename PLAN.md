@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: implementation is continuing under the approved plan. The production-generalization correction and provider-neutral transport are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and live NVIDIA extraction/selection evidence is recorded. A rights-safe redacted walkthrough is published as a release asset; source clearances for source-bearing artifacts remain external inputs.
+Status: implementation is continuing under the approved plan. The production-generalization correction, provider-neutral transport, and measured live-latency correction are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and live NVIDIA extraction/selection evidence is recorded. A rights-safe redacted walkthrough is published as a release asset; source clearances for source-bearing artifacts remain external inputs.
 
 ## 1. Outcome and governing decisions
 
@@ -89,6 +89,35 @@ The forecast example will be presented as a **likely conflict between reported p
 The supplied screenshots establish the visual direction: forest green, bright green actions, pale surfaces, fine borders, compact spreadsheet-like content, and a right-hand inspection area.
 
 ### Implementation evidence recorded so far
+
+- The live latency correction was measured on the same 1-page, 27-page, and
+  100-page PDFs using the configured NIM profile. The 1-page run fell from
+  30.968 to 3.053 seconds. The 27-page run completed in 145.617 aggregate
+  processing seconds after one checkpoint resume, versus a 2,004.748-second
+  lower-bound baseline, and reduced logical model calls from 1,693 to 21. The
+  100-page run completed with 140 accepted claims and evidence through page 100
+  in 1,718.600 aggregate processing seconds, versus a failed 4,061.039-second
+  baseline; logical model calls fell from 1,892 to 276. Sustained NIM 429s
+  prevented the 100-page case from reaching the desired 10x reduction, so the
+  measured result is reported as 2.36x lower wall time and 6.86x fewer logical
+  calls rather than extrapolated. Production now uses compact hints, bounded
+  claim output, explicit truncation rejection, global role concurrency,
+  resumable retries, batched registry embeddings, semantic-resolution caps,
+  incremental relationship candidates, provisional grounded publication, and
+  live stage/call/heartbeat telemetry. See
+  `docs/LIVE_LATENCY_BENCHMARK_2026-09-08.md` and
+  `evals/reports/live_latency_after_2026-09-08.json`.
+
+- The current paid deployment was then changed through configuration only to
+  DeepSeek V4 Flash for extraction and reasoning, while embeddings remained on
+  a dedicated NIM embedding model. Cold live runs completed the 1-page input in
+  2.321 seconds and the 27-page input in 50.529 seconds without retries. The
+  100-page input completed in 326.626 aggregate processing seconds after eight
+  HTTP protocol interruptions and a checkpoint resume, publishing 118 accepted
+  grounded claims across 56 pages with evidence through page 100. This is a
+  provider-inclusive user-latency comparison, not an architecture-only
+  ablation. The NVIDIA records remain unchanged as historical evidence. See
+  `evals/reports/live_latency_deepseek_2026-09-08.json`.
 
 - The production-generalization correction is complete for the offline and
   configured-provider paths. The parser no longer branches on starter entities

@@ -61,6 +61,8 @@ EXTRACTION_BASE_URL=https://integrate.api.nvidia.com/v1
 EXTRACTION_API_KEY=${NVIDIA_API_KEY}
 EXTRACTION_MODEL=nvidia/nemotron-3-super-120b-a12b
 EXTRACTION_STRUCTURED_OUTPUT_MODE=json_object
+# Optional endpoint fields remain configuration, not provider logic.
+EXTRACTION_EXTRA_BODY_JSON={"chat_template_kwargs":{"enable_thinking":false}}
 ```
 
 Keep the key in the local environment; the placeholder above is documentation
@@ -73,6 +75,28 @@ reserves the configured retry envelope and records the attempts actually used,
 so retries cannot silently exceed the cumulative cap. Cache fingerprints also
 include the nonsecret endpoint/path/model identity, so changing providers does
 not replay another endpoint's response.
+
+The current paid development route uses DeepSeek V4 Flash for extraction and
+reasoning through the same generic settings:
+
+```dotenv
+EXTRACTION_BASE_URL=https://api.deepseek.com
+EXTRACTION_MODEL=deepseek-v4-flash
+EXTRACTION_API_KEY=${DEEPSEEK_API_KEY}
+EXTRACTION_EXTRA_BODY_JSON={"thinking":{"type":"disabled"}}
+REASONING_BASE_URL=https://api.deepseek.com
+REASONING_MODEL=deepseek-v4-flash
+REASONING_API_KEY=${DEEPSEEK_API_KEY}
+REASONING_EXTRA_BODY_JSON={"thinking":{"type":"disabled"}}
+```
+
+The 1-page, 27-page, and 100-page live runs completed in 2.321, 50.529, and
+326.626 aggregate processing seconds respectively. The 100-page run preserved
+60 successful checkpoints across eight interrupted responses, then resumed the
+remaining batches and published 118 grounded claims with evidence through page
+100. These figures include a provider change and are documented separately from
+the architecture-only latency work in
+[`live_latency_deepseek_2026-09-08.json`](evals/reports/live_latency_deepseek_2026-09-08.json).
 
 The starter PDFs are third-party publications and are not committed while
 redistribution permission is unresolved. Use
