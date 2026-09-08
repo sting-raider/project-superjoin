@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import random
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -25,6 +26,15 @@ class ProviderResult:
     cached: bool = False
     endpoint: str | None = None
     attempts: int = 1
+    finish_reason: str | None = None
+
+    @property
+    def truncated(self) -> bool:
+        return str(self.finish_reason or "").casefold() in {
+            "length",
+            "max_tokens",
+            "max_output_tokens",
+        }
 
 
 class ProviderError(RuntimeError):
@@ -68,6 +78,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_header": "extraction_auth_header",
         "auth_scheme": "extraction_auth_scheme",
         "send_model": "extraction_send_model",
+        "concurrency": "extraction_concurrency",
     },
     "reasoning": {
         "base_url": "reasoning_base_url",
@@ -80,6 +91,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_header": "reasoning_auth_header",
         "auth_scheme": "reasoning_auth_scheme",
         "send_model": "reasoning_send_model",
+        "concurrency": "reasoning_concurrency",
     },
     "vision": {
         "base_url": "vision_base_url",
@@ -92,6 +104,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_header": "vision_auth_header",
         "auth_scheme": "vision_auth_scheme",
         "send_model": "vision_send_model",
+        "concurrency": "vision_concurrency",
     },
     "embedding": {
         "base_url": "embedding_base_url",
@@ -102,6 +115,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_header": "embedding_auth_header",
         "auth_scheme": "embedding_auth_scheme",
         "send_model": "embedding_send_model",
+        "concurrency": "embedding_concurrency",
     },
 }
 
@@ -125,6 +139,7 @@ def _role_config(role: str) -> dict[str, Any]:
             "auth_header": "Authorization",
             "auth_scheme": "Bearer",
             "send_model": True,
+            "concurrency": 1,
         }
     return {key: getattr(settings, attribute) for key, attribute in fields.items()}
 
@@ -188,6 +203,33 @@ def _headers(config: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
+_role_slots_lock = threading.Lock()
+_role_slots: dict[tuple[str, int], threading.BoundedSemaphore] = {}
+_role_cooldown_until: dict[str, float] = {}
+
+
+def _role_slot(role: str, limit: int) -> threading.BoundedSemaphore:
+    key = (_canonical_role(role), max(1, limit))
+    with _role_slots_lock:
+        return _role_slots.setdefault(key, threading.BoundedSemaphore(key[1]))
+
+
+def _wait_for_role_cooldown(role: str) -> None:
+    with _role_slots_lock:
+        remaining = _role_cooldown_until.get(_canonical_role(role), 0.0) - time.monotonic()
+    if remaining > 0:
+        time.sleep(min(remaining, 30.0))
+
+
+def _note_role_rate_limit(role: str, delay: float) -> None:
+    until = time.monotonic() + max(0.0, min(delay, 30.0))
+    with _role_slots_lock:
+        canonical = _canonical_role(role)
+        _role_cooldown_until[canonical] = max(
+            _role_cooldown_until.get(canonical, 0.0), until
+        )
+
+
 def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallback_output_tokens: int | None = None) -> ProviderResult:
     config = _role_config(role)
     base_url = str(config["base_url"] or "")
@@ -203,35 +245,45 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
     attempts = max(1, int(getattr(settings, "provider_retry_attempts", 1)))
     raw = None
     attempts_used = 0
-    for attempt in range(attempts):
-        attempts_used = attempt + 1
-        try:
-            with urllib.request.urlopen(request, timeout=int(config["timeout"])) as response:
-                raw = json.loads(response.read().decode("utf-8"))
-            break
-        except urllib.error.HTTPError as exc:
+    slot = _role_slot(role, int(config.get("concurrency") or 1))
+    with slot:
+        for attempt in range(attempts):
+            attempts_used = attempt + 1
+            _wait_for_role_cooldown(role)
             try:
-                detail = exc.read().decode("utf-8", errors="replace")[:500]
-            except (AttributeError, OSError, UnicodeError):  # pragma: no cover - defensive for unusual transports
-                detail = str(exc)
-            transient = exc.code == 429 or exc.code >= 500
-            if not transient or attempt + 1 >= attempts:
-                raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}", attempts=attempts_used) from exc
-            retry_after = _retry_after_seconds(exc)
-            _sleep_before_retry(attempt, retry_after)
-        except (urllib.error.URLError, TimeoutError) as exc:
-            if attempt + 1 >= attempts:
-                raise ProviderError(f"{role} provider request failed: {exc}", attempts=attempts_used) from exc
-            _sleep_before_retry(attempt)
-        except json.JSONDecodeError as exc:
-            raise ProviderError(f"{role} provider returned invalid JSON: {exc}", attempts=attempts_used) from exc
+                with urllib.request.urlopen(request, timeout=int(config["timeout"])) as response:
+                    raw = json.loads(response.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as exc:
+                try:
+                    detail = exc.read().decode("utf-8", errors="replace")[:500]
+                except (AttributeError, OSError, UnicodeError):  # pragma: no cover - defensive for unusual transports
+                    detail = str(exc)
+                transient = exc.code == 429 or exc.code >= 500
+                if not transient or attempt + 1 >= attempts:
+                    raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}", attempts=attempts_used) from exc
+                retry_after = _retry_after_seconds(exc)
+                if exc.code == 429:
+                    delay = retry_after if retry_after is not None else float(
+                        getattr(settings, "provider_retry_backoff_seconds", 0.25)
+                    ) * (2**attempt)
+                    _note_role_rate_limit(role, delay)
+                _sleep_before_retry(attempt, retry_after)
+            except (urllib.error.URLError, TimeoutError) as exc:
+                if attempt + 1 >= attempts:
+                    raise ProviderError(f"{role} provider request failed: {exc}", attempts=attempts_used) from exc
+                _sleep_before_retry(attempt)
+            except json.JSONDecodeError as exc:
+                raise ProviderError(f"{role} provider returned invalid JSON: {exc}", attempts=attempts_used) from exc
     if raw is None:  # pragma: no cover - loop either returns or raises
         raise ProviderError(f"{role} provider returned no response", attempts=attempts_used)
     elapsed = int((time.perf_counter() - started) * 1000)
+    finish_reason = None
     if operation == "embedding":
         parsed = raw
     else:
         choice = (raw.get("choices") or [{}])[0]
+        finish_reason = choice.get("finish_reason")
         message = choice.get("message") or {}
         content = message.get("content", choice.get("text", ""))
         if isinstance(content, list):
@@ -263,6 +315,7 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
         latency_ms=elapsed,
         endpoint=public_endpoint(url),
         attempts=attempts_used,
+        finish_reason=str(finish_reason) if finish_reason is not None else None,
     )
 
 
@@ -318,7 +371,7 @@ def vision_chat(system: str, user: str, image_bytes: bytes, model: str | None = 
     return _post("chat", payload, chosen, "vision", output_limit)
 
 
-def embed(text: str, model: str | None = None) -> ProviderResult:
+def embed(text: str | list[str], model: str | None = None) -> ProviderResult:
     config = _role_config("embedding")
     chosen = model or str(config["model"] or "")
     payload: dict[str, Any] = {"input": text}

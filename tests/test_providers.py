@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import Any, Self
 
@@ -78,6 +80,90 @@ def test_role_endpoints_and_keys_are_independent(monkeypatch) -> None:
     assert calls[1][1] == "Bearer embed-key"
     assert calls[1][2] == 17
     assert calls[1][3]["dimensions"] == 2
+
+
+def test_chat_result_exposes_output_limit_truncation(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="http://extract.example/v1",
+        extraction_model="arbitrary-model",
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    monkeypatch.setattr(
+        providers.urllib.request,
+        "urlopen",
+        lambda _request, timeout: _Response(
+            {
+                "choices": [
+                    {
+                        "message": {"content": '{"claims":[]}'},
+                        "finish_reason": "length",
+                    }
+                ]
+            }
+        ),
+    )
+
+    result = providers.structured_chat("extraction", "system", "user")
+
+    assert result.finish_reason == "length"
+    assert result.truncated is True
+
+
+def test_embedding_request_accepts_a_batch(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        embedding_base_url="http://embed.example/v1",
+        embedding_model="arbitrary-embedder",
+        embedding_dimensions=2,
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    payloads: list[dict[str, Any]] = []
+
+    def fake_urlopen(request, timeout):
+        payloads.append(json.loads(request.data.decode("utf-8")))
+        return _Response(
+            {"data": [{"index": 0, "embedding": [1.0, 0.0]}, {"index": 1, "embedding": [0.0, 1.0]}]}
+        )
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+
+    result = providers.embed(["first", "second"])
+
+    assert payloads[0]["input"] == ["first", "second"]
+    assert len(result.data["data"]) == 2
+
+
+def test_role_concurrency_is_global_across_callers(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="http://extract.example/v1",
+        extraction_model="arbitrary-model",
+        extraction_concurrency=2,
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    monkeypatch.setattr(providers, "_role_slots", {})
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def fake_urlopen(_request, timeout):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            threading.Event().wait(0.02)
+            return _Response({"choices": [{"message": {"content": '{"claims":[]}'}}]})
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        list(executor.map(lambda _: providers.structured_chat("extraction", "s", "u"), range(6)))
+
+    assert peak == 2
 
 
 def test_arbitrary_compatible_endpoint_supports_local_and_azure_style_auth(monkeypatch) -> None:
