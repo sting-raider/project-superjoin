@@ -203,9 +203,13 @@ def normalize_modality(value: str | None, evidence_text: str | None = None) -> s
     # source wording is authoritative in that narrow case.
     if normalized in {"reported", "observed", "estimated"} and evidence_text:
         evidence = re.sub(r"\s+", " ", evidence_text.casefold())
-        if re.search(r"\b(?:first advance estimates?|initial estimates?)\b", evidence):
+        release = re.search(
+            r"\b(first|initial|second|revised|updated)\s+(?:advance\s+)?estimates?\b",
+            evidence,
+        )
+        if release and release.group(1) in {"first", "initial"}:
             return "first_estimate"
-        if re.search(r"\b(?:second advance estimates?|revised estimates?|updated estimates?)\b", evidence):
+        if release:
             return "revised_estimate"
         if re.search(r"\b(?:forecast(?:ed)?|project(?:ed|ion)|expected to)\b", evidence):
             return "forecast"
