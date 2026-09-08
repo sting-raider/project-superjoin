@@ -14,6 +14,7 @@ from app.pipeline import (
     _RunCancelled,
     _vision_extract_page,
     build_extraction_batches,
+    compact_candidate_hints,
     process_document,
 )
 from app.providers import ProviderResult
@@ -56,6 +57,81 @@ def test_malformed_extraction_gets_one_budgeted_repair(monkeypatch, tmp_path: Pa
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_candidate_hints_are_compact_and_do_not_repeat_evidence() -> None:
+    evidence_text = "Annual recurring revenue reached $42 million in FY26."
+    candidate = {
+        "subject": "Document subject",
+        "predicate": "annual_recurring_revenue",
+        "raw_value": "$42 million",
+        "value_type": "money",
+        "period": "FY26",
+        "evidence": {"pdf_page": 7, "text": evidence_text, "start": 10, "end": 45},
+    }
+
+    hints = compact_candidate_hints([candidate, candidate], limit=10)
+
+    assert hints == [
+        {
+            "page": 7,
+            "label": "annual_recurring_revenue",
+            "value": "$42 million",
+            "value_type": "money",
+            "start": 10,
+            "end": 45,
+            "period": "FY26",
+        }
+    ]
+    assert evidence_text not in str(hints)
+
+
+def test_truncated_extraction_is_not_published_as_deterministic_hints(
+    monkeypatch, tmp_path: Path
+) -> None:
+    original_database = settings.database_path
+    object.__setattr__(settings, "database_path", tmp_path / "truncated.sqlite3")
+    candidate = {
+        "subject": "Document subject",
+        "predicate": "annual_recurring_revenue",
+        "raw_value": "$42 million",
+        "value_type": "money",
+        "evidence": {"pdf_page": 1, "text": "ARR reached $42 million."},
+    }
+    try:
+        init_db()
+        monkeypatch.setattr(
+            "app.pipeline.structured_chat",
+            lambda *args, **kwargs: ProviderResult(
+                data={"claims": [candidate]},
+                model="fake",
+                output_tokens=1200,
+                finish_reason="length",
+            ),
+        )
+        batch = ExtractionBatch(
+            index=0,
+            pages=[{"pdf_page": 1, "section": 0, "start": 0, "text": "ARR reached $42 million."}],
+            candidates=[candidate],
+        )
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES('w','W',?)", (now,))
+            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES('d','w','x.pdf','h','processing',?)", (now,))
+            conn.execute("INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES('r','w','d','live','processing',0,'',?,?)", (now, now))
+
+        claims = _extract_document_batches([batch], "x.pdf", "r", "d")
+
+        assert claims == []
+        with db() as conn:
+            checkpoint = conn.execute(
+                "SELECT status,error,claim_count FROM extraction_batches WHERE run_id='r'"
+            ).fetchone()
+        assert checkpoint["status"] == "failed"
+        assert "truncated" in checkpoint["error"].lower()
+        assert checkpoint["claim_count"] == 0
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
 
 
 def test_extraction_batches_cover_useful_claims_after_page_twenty_four() -> None:

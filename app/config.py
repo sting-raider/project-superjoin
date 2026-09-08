@@ -68,6 +68,8 @@ class Settings:
     extraction_concurrency: int = _int_env("EXTRACTION_CONCURRENCY", 2)
     extraction_batch_pages: int = _int_env("EXTRACTION_BATCH_PAGES", 6)
     extraction_batch_chars: int = _int_env("EXTRACTION_BATCH_CHARS", 24000)
+    extraction_hint_limit: int = _int_env("EXTRACTION_HINT_LIMIT", 24)
+    extraction_claims_per_batch: int = _int_env("EXTRACTION_CLAIMS_PER_BATCH", 8)
     reasoning_concurrency: int = _int_env("REASONING_CONCURRENCY", 2)
     vision_concurrency: int = _int_env("VISION_CONCURRENCY", 2)
     embedding_concurrency: int = _int_env("EMBEDDING_CONCURRENCY", 2)
