@@ -22,7 +22,7 @@ The table maps the approved plan to the implemented review surface. File names a
 | Provider isolation and budget | role settings, arbitrary OpenAI-compatible transport, response cache, reservations/settlement, model-call ledger | Non-Gemini fake endpoint test; Settings screen; budget endpoint; no-key demo |
 | Prompt-injection safety | `app/security.py`, untrusted prompt boundaries, quarantine status | Five-case offline security report |
 | Superjoin-inspired UI | `web/src/styles.css`, `web/src/main.jsx` | Forest/green palette, facts table, evidence/trust side panel |
-| Evaluation and observability | `evals/`, `docs/EVALUATION.md`, run events, health/budget endpoints | CI and reproducible scripts |
+| Evaluation and observability | `evals/`, `docs/EVALUATION.md`, run events, `/api/v1/runs/{run_id}/model-calls`, health/budget endpoints, Runs telemetry disclosure | CI and reproducible scripts; per-run role/status/token/latency/retry/cache/spend inspection |
 | Easy setup and demo mode | `Dockerfile`, `compose.yaml`, seeded replay records, README | `docker compose up --build`, localhost:8080 |
 | Interactive recorded replay | `app/seed.py`, `/api/v1/demo/replay/*`, `demo_replay_state`, sidebar controls | Start two-document checkpoint, continue third-document ingestion, reset scoped sandbox |
 
