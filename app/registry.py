@@ -230,7 +230,8 @@ def _register_workspace_claims(
             ci.entity_status,ci.predicate_status
             FROM claims c JOIN claim_interpretations ci ON ci.claim_id=c.id
               AND ci.version=(SELECT MAX(ci2.version) FROM claim_interpretations ci2 WHERE ci2.claim_id=c.id)
-            WHERE c.workspace_id=? AND c.extraction_status='accepted'""",
+            WHERE c.workspace_id=? AND c.extraction_status='accepted'
+            ORDER BY c.created_at,c.id""",
             (workspace_id,),
         ).fetchall()
         rows = [
