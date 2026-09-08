@@ -79,6 +79,7 @@ def test_document_detail_exposes_page_quality_and_source_metadata() -> None:
         assert payload["pages"]
         first_page = payload["pages"][0]
         assert {"page_number", "parser", "quality_score", "quality_flags", "disposition"} <= first_page.keys()
+        assert any(page["printed_label"] for page in payload["pages"])
 
 
 def test_resolver_requires_period_for_temporal_role_history() -> None:

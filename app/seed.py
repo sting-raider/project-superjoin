@@ -69,9 +69,13 @@ def seed_demo(document_ids: Iterable[str] | None = None) -> None:
             page_id = page_artifact_id(claim["document_id"], page)
             conn.execute(
                 """INSERT OR IGNORE INTO page_artifacts
-                (id,document_id,page_number,width,height,native_text,parser,parser_version,quality_score,quality_flags_json,disposition,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (page_id, claim["document_id"], page, 1200.0, 1600.0, evidence.get("text", ""), "recorded-demo", "recorded-demo-1", 0.96, "[]", "native", created_at),
+                (id,document_id,page_number,printed_label,width,height,native_text,parser,parser_version,quality_score,quality_flags_json,disposition,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (page_id, claim["document_id"], page, evidence.get("printed_page"), 1200.0, 1600.0, evidence.get("text", ""), "recorded-demo", "recorded-demo-1", 0.96, "[]", "native", created_at),
+            )
+            conn.execute(
+                "UPDATE page_artifacts SET printed_label=? WHERE id=? AND (printed_label IS NULL OR printed_label='')",
+                (evidence.get("printed_page"), page_id),
             )
             anchor_id = persist_anchor(conn, claim["document_id"], evidence)
             conn.execute("INSERT OR IGNORE INTO claim_evidence(claim_id,anchor_id,purpose,created_at) VALUES(?,?,?,?)", (claim["id"], anchor_id, "assertion", created_at))
