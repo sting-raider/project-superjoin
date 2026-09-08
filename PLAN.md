@@ -1307,6 +1307,8 @@ Provide a curated replay that starts from an authentic two-document checkpoint, 
 - The baseline must genuinely predate the third document.
 - Match recorded calls by versioned input fingerprints.
 - Show “Recorded model outputs; no API calls.”
+- Seed nonsecret recorded run stages so the offline Runs view exposes the
+  lifecycle and an explicit zero-call telemetry state.
 - Display original run timing/cost separately from replay timing.
 - Missing recordings produce a visible replay limitation, never invented results.
 - Allow review decisions after replay in a disposable sandbox.

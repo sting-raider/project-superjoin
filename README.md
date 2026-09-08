@@ -31,6 +31,9 @@ clears only the demo workspaces, keeps any live workspace intact, and restores
 the full recorded snapshot. Original provider timing/cost is shown as
 unavailable when it was not part of the permitted recording; replay timing is
 measured locally.
+The Runs view still shows the recorded lifecycle events and an explicit
+zero-call telemetry disclosure, so offline replay does not look like a live
+provider run.
 
 To process a never-seen PDF, provide an OpenAI-compatible endpoint in a local
 `.env` (see `.env.example`) and restart Compose. Extraction, reasoning, vision,
