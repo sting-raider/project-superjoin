@@ -30,7 +30,7 @@ from .providers import (
 from .registry import register_workspace_claims
 from .security import untrusted_document_block, validate_model_claim
 
-EXTRACTION_PROMPT_VERSION = "extraction-v5-compact-four-claims"
+EXTRACTION_PROMPT_VERSION = "extraction-v6-canonical-response-shape"
 VISION_PROMPT_VERSION = "vision-v2-grounded"
 
 _STAGE_BANDS = {
@@ -113,6 +113,11 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
             if batch_counts["completed"] == 0:
                 raise ProviderError(
                     "All extraction batches failed; no knowledge revision was published"
+                )
+            if batch_counts["failed"]:
+                raise ProviderError(
+                    f"{batch_counts['failed']} of {batch_counts['batches']} extraction "
+                    "batches failed; retry will resume from completed checkpoints"
                 )
             _finish_stage(run_id, "extraction", batch_counts)
         _raise_if_cancelled(run_id)
@@ -423,8 +428,9 @@ def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str 
             data = json.loads(cached["response_json"])
             _record_model_call(run_id, "extraction", chosen_model, digest, "cache_hit", 0.0, cache_hit=True)
             if _claim_envelope(data) is not None:
-                valid = [item for item in data["claims"] if item.get("evidence") and validate_model_claim(item) and _model_claim_grounded(item, candidates, source_pages)]
-                return valid
+                return _validated_grounded_claims(
+                    data["claims"], candidates, source_pages
+                )
         except json.JSONDecodeError:
             pass
     reservation = None
@@ -476,8 +482,9 @@ def _model_extract(candidates: list[dict[str, Any]], filename: str, run_id: str 
             data = repaired
             envelope = _claim_envelope(data)
     if envelope is not None:
-        valid = [item for item in envelope.claims if item.get("evidence") and validate_model_claim(item) and _model_claim_grounded(item, candidates, source_pages)]
-        return valid
+        return _validated_grounded_claims(
+            envelope.claims, candidates, source_pages
+        )
     raise ProviderError("extraction provider returned no valid claims envelope")
 
 
@@ -486,6 +493,33 @@ def _claim_envelope(data: Any) -> _ClaimEnvelope | None:
         return _ClaimEnvelope.model_validate(data)
     except (ValidationError, TypeError):
         return None
+
+
+def _validated_grounded_claims(
+    items: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    source_pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    valid: list[dict[str, Any]] = []
+    for source_item in items:
+        item = dict(source_item)
+        evidence = item.get("evidence")
+        if isinstance(evidence, str):
+            item["evidence"] = {
+                "text": evidence,
+                "pdf_page": item.pop("pdf_page", None),
+            }
+        elif isinstance(evidence, dict) and not evidence.get("pdf_page"):
+            item["evidence"] = {
+                **evidence,
+                "pdf_page": item.pop("pdf_page", None),
+            }
+        if (
+            validate_model_claim(item)
+            and _model_claim_grounded(item, candidates, source_pages)
+        ):
+            valid.append(item)
+    return valid
 
 
 def _repair_model_extract(compact: str, filename: str, run_id: str, model: str, candidates: list[dict[str, Any]], source_pages: list[dict[str, Any]]) -> Any | None:
@@ -721,11 +755,21 @@ def _insert_claims(
             if existing:
                 if (
                     publication_state == "accepted"
-                    and existing["extraction_status"] == "provisional"
+                    and existing["extraction_status"]
+                    in {"provisional", "failed", "cancelled"}
                 ):
                     conn.execute(
-                        "UPDATE claims SET extraction_status='accepted' WHERE id=?",
-                        (claim_id,),
+                        "UPDATE claims SET extraction_status='accepted',run_id=? WHERE id=?",
+                        (run_id, claim_id),
+                    )
+                    inserted += 1
+                elif (
+                    publication_state == "provisional"
+                    and existing["extraction_status"] in {"failed", "cancelled"}
+                ):
+                    conn.execute(
+                        "UPDATE claims SET extraction_status='provisional',run_id=? WHERE id=?",
+                        (run_id, claim_id),
                     )
                     inserted += 1
                 continue

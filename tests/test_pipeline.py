@@ -12,6 +12,7 @@ from app.pipeline import (
     _insert_claims,
     _model_extract,
     _RunCancelled,
+    _validated_grounded_claims,
     _vision_extract_page,
     build_extraction_batches,
     compact_candidate_hints,
@@ -49,7 +50,9 @@ def test_malformed_extraction_gets_one_budgeted_repair(monkeypatch, tmp_path: Pa
         init_db()
         monkeypatch.setattr("app.pipeline.structured_chat", fake_chat)
         result = _model_extract([candidate], "source.pdf", None, [{"pdf_page": 1, "text": candidate["evidence"]["text"]}])
-        assert result == [repaired_claim]
+        assert result == [
+            {**repaired_claim, "evidence": {**repaired_claim["evidence"], "pdf_page": 1}}
+        ]
         assert len(calls) == 2
         with db() as conn:
             statuses = [row["status"] for row in conn.execute("SELECT status FROM model_calls ORDER BY created_at").fetchall()]
@@ -84,6 +87,30 @@ def test_candidate_hints_are_compact_and_do_not_repeat_evidence() -> None:
         }
     ]
     assert evidence_text not in str(hints)
+
+
+def test_flat_provider_evidence_is_canonicalized_before_grounding() -> None:
+    text = "Orion Works operated at 83% utilization during FY2026."
+    items = [
+        {
+            "subject": "Orion Works",
+            "predicate": "capacity_utilization",
+            "raw_value": "83%",
+            "value_type": "percentage",
+            "unit": "%",
+            "period": "FY2026",
+            "modality": "actual",
+            "scope": "manufacturing",
+            "evidence": text,
+            "pdf_page": 31,
+        }
+    ]
+
+    claims = _validated_grounded_claims(
+        items, [], [{"pdf_page": 31, "text": text}]
+    )
+
+    assert claims[0]["evidence"] == {"text": text, "pdf_page": 31}
 
 
 def test_truncated_extraction_is_not_published_as_deterministic_hints(

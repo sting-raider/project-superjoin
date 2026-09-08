@@ -292,7 +292,22 @@ def retry_run(run_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
         if not document:
             raise HTTPException(404, "Document not found")
         new_run_id = f"run-{uuid.uuid4().hex[:12]}"
-        conn.execute("INSERT INTO runs(id,workspace_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", (new_run_id, document["workspace_id"], "retry", "queued", 0, "Retry queued", utc_now(), utc_now()))
+        conn.execute(
+            """INSERT INTO runs
+            (id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                new_run_id,
+                document["workspace_id"],
+                document["id"],
+                "retry",
+                "queued",
+                0,
+                "Retry queued",
+                utc_now(),
+                utc_now(),
+            ),
+        )
         data = Path(document["stored_path"]).read_bytes()
     background_tasks.add_task(process_document, new_run_id, document["id"], document["workspace_id"], data, document["name"])
     return {"run_id": new_run_id, "document_id": document["id"]}

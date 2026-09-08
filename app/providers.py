@@ -283,9 +283,9 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
                 if not transient or attempt + 1 >= attempts:
                     raise ProviderError(f"{role} provider HTTP {exc.code}: {detail}", attempts=attempts_used) from exc
                 retry_after = _retry_after_seconds(exc)
-                if exc.code == 429:
+                if exc.code == 429 or exc.code >= 500:
                     delay = retry_after if retry_after is not None else float(
-                        getattr(settings, "provider_retry_backoff_seconds", 0.25)
+                        getattr(settings, "provider_retry_backoff_seconds", 0.5)
                     ) * (2**attempt)
                     _note_role_rate_limit(role, delay)
                 _sleep_before_retry(attempt, retry_after)
@@ -348,7 +348,7 @@ def _retry_after_seconds(error: urllib.error.HTTPError) -> float | None:
 
 
 def _sleep_before_retry(attempt: int, retry_after: float | None = None) -> None:
-    base = float(getattr(settings, "provider_retry_backoff_seconds", 0.25))
+    base = float(getattr(settings, "provider_retry_backoff_seconds", 0.5))
     delay = retry_after if retry_after is not None else base * (2**attempt)
     time.sleep(max(0.0, delay + random.uniform(0.0, min(base, 0.25))))
 
