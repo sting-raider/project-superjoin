@@ -119,7 +119,8 @@ def test_uncovered_high_signal_page_gets_bounded_semantic_recovery(monkeypatch) 
     ]
     calls = []
 
-    def fake_extract(hints, filename, run_id, pages):
+    def fake_extract(hints, filename, run_id, pages, *, recall_focus=False):
+        assert recall_focus is True
         calls.append((hints, pages))
         page = pages[0]["pdf_page"]
         return [
