@@ -498,14 +498,37 @@ def fact(fact_id: str) -> dict[str, Any]:
         item = row_to_dict(conn.execute("SELECT * FROM facts WHERE id=?", (fact_id,)).fetchone())
         if not item:
             raise HTTPException(404, "Fact not found")
-        claims = rows_to_dicts(conn.execute("SELECT * FROM claims WHERE workspace_id=? AND subject=? AND predicate=? AND (period=? OR ? IS NULL)", (item["workspace_id"], item["subject"], item["predicate"], item["period"], item["period"])).fetchall())
-        relationships = rows_to_dicts(conn.execute("SELECT * FROM relationships WHERE workspace_id=? AND (claim_a IN (SELECT id FROM claims WHERE subject=? AND predicate=?) OR claim_b IN (SELECT id FROM claims WHERE subject=? AND predicate=?))", (item["workspace_id"], item["subject"], item["predicate"], item["subject"], item["predicate"])).fetchall())
-        anchors = rows_to_dicts(conn.execute("""SELECT ea.*,ce.claim_id,ce.purpose
+        # Canonical names can differ from immutable source mentions. Memberships
+        # in the published version are the authority for this fact's provenance.
+        members = """SELECT fm.claim_id FROM fact_memberships fm
+            JOIN fact_versions fv ON fv.id=fm.fact_version_id
+            WHERE fv.fact_id=? AND fv.revision=?"""
+        params = (fact_id, item["revision"])
+        claims = rows_to_dicts(conn.execute(
+            f"SELECT * FROM claims WHERE id IN ({members}) ORDER BY created_at,id", params
+        ).fetchall())
+        relationships = rows_to_dicts(conn.execute(
+            f"""SELECT * FROM relationships WHERE workspace_id=?
+            AND (claim_a IN ({members}) OR claim_b IN ({members}))
+            ORDER BY created_at,id""", (item["workspace_id"], *params, *params)
+        ).fetchall())
+        anchors = rows_to_dicts(conn.execute(
+            f"""SELECT ea.*,ce.claim_id,ce.purpose,d.name AS document_name,
+            d.publisher,d.status AS document_status,c.grounding_status,c.extraction_status
             FROM evidence_anchors ea JOIN claim_evidence ce ON ce.anchor_id=ea.id
-            WHERE ce.claim_id IN (SELECT id FROM claims WHERE workspace_id=? AND subject=? AND predicate=? AND (period=? OR ? IS NULL))
-            ORDER BY ea.pdf_page,ea.id""", (item["workspace_id"], item["subject"], item["predicate"], item["period"], item["period"])).fetchall())
-        interpretations = rows_to_dicts(conn.execute("SELECT * FROM claim_interpretations WHERE claim_id IN (SELECT id FROM claims WHERE workspace_id=? AND subject=? AND predicate=? AND (period=? OR ? IS NULL)) ORDER BY created_at", (item["workspace_id"], item["subject"], item["predicate"], item["period"], item["period"])).fetchall())
-    return {"fact": item, "claims": claims, "anchors": anchors, "interpretations": interpretations, "relationships": relationships}
+            JOIN documents d ON d.id=ea.document_id JOIN claims c ON c.id=ce.claim_id
+            WHERE ce.claim_id IN ({members}) ORDER BY ea.pdf_page,ea.id,ce.claim_id""", params
+        ).fetchall())
+        interpretations = rows_to_dicts(conn.execute(
+            f"""SELECT * FROM claim_interpretations WHERE claim_id IN ({members})
+            ORDER BY created_at,id""", params
+        ).fetchall())
+        for anchor in anchors:
+            anchor["pdf_url"] = f"/api/v1/documents/{anchor['document_id']}/file#page={anchor['pdf_page']}"
+    return {"fact": item, "claims": claims, "anchors": anchors,
+            "interpretations": interpretations, "relationships": relationships,
+            "evidence_unavailable_reason": None if anchors else
+            "No source evidence anchors are linked to this published fact version."}
 
 
 @app.get("/api/v1/facts/{fact_id}/history")

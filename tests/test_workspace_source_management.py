@@ -86,6 +86,30 @@ def test_source_remove_and_restore_rebuilds_active_knowledge(tmp_path: Path) -> 
         object.__setattr__(settings, "upload_dir", original_upload)
 
 
+def test_fact_detail_follows_version_memberships_after_canonical_alias_change(tmp_path, monkeypatch):
+    monkeypatch.setitem(settings.__dict__, "database_path", tmp_path / "membership.sqlite3")
+    monkeypatch.setitem(settings.__dict__, "upload_dir", tmp_path / "uploads")
+    with TestClient(app) as client:
+        workspace = client.post("/api/v1/workspaces", json={"name": "Alias Review"}).json()["id"]
+        _insert_source(workspace, "board", "$125 million")
+        rebuild_workspace(workspace)
+        with db() as conn:
+            fact_id = conn.execute("SELECT id FROM facts WHERE workspace_id=?", (workspace,)).fetchone()[0]
+            # The canonical surface differs from the immutable source mention.
+            conn.execute("UPDATE facts SET subject='Northstar Incorporated',predicate='arr' WHERE id=?", (fact_id,))
+            conn.execute("""INSERT INTO evidence_anchors
+                (id,document_id,pdf_page,text,anchor_hash,created_at)
+                VALUES('anchor-board','board',1,'Northstar ARR was $125 million in FY26.','anchor-hash',?)""", (utc_now(),))
+            conn.execute("""INSERT INTO claim_evidence(claim_id,anchor_id,purpose,created_at)
+                VALUES('claim-board','anchor-board','value',?)""", (utc_now(),))
+        detail = client.get(f"/api/v1/facts/{fact_id}").json()
+        assert [c["id"] for c in detail["claims"]] == ["claim-board"]
+        assert detail["claims"][0]["subject"] == "Northstar Cloud"
+        assert detail["anchors"][0]["document_name"] == "board.pdf"
+        assert detail["anchors"][0]["pdf_url"] == "/api/v1/documents/board/file#page=1"
+        assert detail["evidence_unavailable_reason"] is None
+
+
 def test_workspace_delete_removes_its_local_source_file(tmp_path: Path) -> None:
     original_db, original_upload = settings.database_path, settings.upload_dir
     object.__setattr__(settings, "database_path", tmp_path / "workspace-delete.sqlite3")
