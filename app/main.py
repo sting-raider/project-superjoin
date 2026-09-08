@@ -208,6 +208,22 @@ def run(run_id: str) -> dict[str, Any]:
     return item
 
 
+@app.get("/api/v1/runs/{run_id}/model-calls")
+def run_model_calls(run_id: str) -> dict[str, Any]:
+    """Return nonsecret model-call telemetry for one run."""
+
+    with db() as conn:
+        if not conn.execute("SELECT 1 FROM runs WHERE id=?", (run_id,)).fetchone():
+            raise HTTPException(404, "Run not found")
+        rows = conn.execute(
+            """SELECT id,role,model,status,input_tokens,output_tokens,
+            estimated_cost,latency_ms,attempts,cache_hit,created_at
+            FROM model_calls WHERE run_id=? ORDER BY created_at,id""",
+            (run_id,),
+        ).fetchall()
+    return {"run_id": run_id, "items": rows_to_dicts(rows)}
+
+
 @app.get("/api/v1/runs")
 def runs(workspace_id: str | None = None, limit: int = 50) -> dict[str, Any]:
     workspace_id = _workspace_or_default(workspace_id)

@@ -8,6 +8,7 @@ os.environ["DEMO_MODE"] = "true"
 
 from fastapi.testclient import TestClient
 
+from app.db import db, utc_now
 from app.main import _public_endpoint, app
 
 
@@ -190,6 +191,46 @@ def test_runs_surface_is_available_for_observability() -> None:
         response = client.get("/api/v1/runs", params={"workspace_id": "delhivery"})
         assert response.status_code == 200
         assert isinstance(response.json()["items"], list)
+
+
+def test_run_model_calls_surface_nonsecret_telemetry() -> None:
+    run_id = f"telemetry-{uuid.uuid4().hex[:8]}"
+    now = utc_now()
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO runs(id,workspace_id,mode,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+            (run_id, "delhivery", "live", "complete", 100, "Complete", now, now),
+        )
+        conn.execute(
+            """INSERT INTO model_calls
+            (id,run_id,role,model,input_hash,status,input_tokens,output_tokens,
+             estimated_cost,latency_ms,attempts,cache_hit,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                f"call-{uuid.uuid4().hex[:8]}",
+                run_id,
+                "extraction",
+                "acme/arbitrary-model",
+                "hash",
+                "complete",
+                12,
+                8,
+                0.0001,
+                321,
+                2,
+                0,
+                now,
+            ),
+        )
+    with TestClient(app) as client:
+        response = client.get(f"/api/v1/runs/{run_id}/model-calls")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"] == run_id
+    assert payload["items"][0]["model"] == "acme/arbitrary-model"
+    assert payload["items"][0]["attempts"] == 2
+    assert payload["items"][0]["latency_ms"] == 321
+    assert "api_key" not in payload["items"][0]
 
 
 def test_demo_replay_endpoints_are_recorded_and_reset_scoped() -> None:
