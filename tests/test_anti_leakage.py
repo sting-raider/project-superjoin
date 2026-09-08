@@ -37,6 +37,12 @@ def test_runtime_has_no_seed_or_replay_modules() -> None:
     assert "/api/v1/demo" not in production
     assert "recorded demo replay" not in production
 
+    evaluation_runner = (root / "scripts" / "evaluate_starter_corpus.py").read_text(
+        encoding="utf-8"
+    )
+    assert "app.demo_data" not in evaluation_runner
+    assert "starter_case_reference.json" in evaluation_runner
+
 
 def test_fresh_process_initializes_with_zero_workspaces(tmp_path: Path) -> None:
     root = Path(__file__).parents[1]

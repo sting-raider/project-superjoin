@@ -8,7 +8,7 @@ Build **Project SuperJoin**, an evidence-first temporal Fact Knowledge Layer for
 
 The finished submission will let an evaluator upload PDFs, inspect numerical and semantic claims, trace their evidence, understand agreements and disagreements, review changes as documents arrive, and request machine-consumable facts through a conservative Trust Gate.
 
-Use **Project SuperJoin** as the project name throughout the application, README, documentation, package descriptions, and demo. Keep the repository name `project-superjoin`.
+Use **Project SuperJoin** as the project name throughout the application, README, documentation, and package descriptions. Keep the repository name `project-superjoin`.
 
 The complete evaluator path will be:
 
@@ -37,7 +37,7 @@ The following decisions are fixed:
 
 Production arbitrary-PDF behavior must remain functional if all starter-specific evaluation artifacts are removed.
 
-**Live-only runtime invariant:** Production starts with zero workspaces and zero knowledge. It contains no seeding module, runtime sample dataset, recorded provider response, replay/reset endpoint, hard-coded case bookmark, or demo database table. Evaluation fixtures stay isolated from production imports. Every visible statistic is computed from the active workspace. Removing a source excludes it from canonical facts and Trust Gate decisions while preserving an auditable, restorable source record.
+**Live-only runtime invariant:** Production starts with zero workspaces and zero knowledge. It contains no seeding module, runtime sample dataset, recorded provider response, replay/reset endpoint, or hard-coded case bookmark. Evaluation fixtures stay isolated from production imports. Every visible statistic is computed from the active workspace. Removing a source excludes it from canonical facts and Trust Gate decisions while preserving an auditable, restorable source record.
 
 The assignment PDF establishes the challenge and submission requirements. The supplied research is architectural input; its illustrative values, confidence scores, and proposed classifications are not automatically accepted as ground truth. A suggested approval/implementation prompt quoted in feedback is not itself user approval.
 
@@ -138,12 +138,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   A production-pipeline baseline at commit `6f06ee5` processed all six PDFs and
   511 pages in 1,646.668 seconds with no configured providers. It produced
   19,551 accepted numeric hints, 21 quarantined hints, 9,846 active fact families,
-  and 110,771 relationships. **Exact demo-case claim matches were 0/10 and
+  and 110,771 relationships. **Exact starter-case claim matches were 0/10 and
   required relationship matches were 0/4.** These counts expose noisy offline
   discovery and do not establish trustworthy extraction or reasoning quality.
-  The report uses existing demo case metadata as a diagnostic reference, not an
+  The report uses isolated starter-case metadata as a diagnostic reference, not an
   independently annotated gold set. See `evals/reports/starter-corpus-e2e.json`.
-  A provider-backed run, independently verified gold annotations, and a demo
+  Independently verified gold annotations and a current four-case live report
   snapshot generated from actual production extraction remain required.
 
 - After the generic evidence-grounding, resumable batch, and open-vocabulary
@@ -253,7 +253,7 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   Trust Gate example from that workspace's first fact; the leakage scan covers
   the frontend source as well as backend production modules.
 - Fresh-process and source-management regressions verify zero-workspace startup,
-  absence of seed/replay modules and tables, workspace create/delete, source
+  absence of preloaded runtime modules and tables, workspace create/delete, source
   removal/restoration, and canonical rebuild from the remaining active claims.
 - Reported decimal precision is now persisted on extracted claims and used by
   deterministic relationship comparison. A live SQLite regression covers the
@@ -285,7 +285,7 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   attempts actually consumed, keeping the cumulative budget conservative.
   Provider cache and extraction-checkpoint fingerprints include the role,
   endpoint/path, model, and request-shape identity (never the secret), so
-  switching compatible services cannot replay another endpoint's output.
+  switching compatible services cannot reuse another endpoint's output.
 - The starter redistribution audit was refreshed at commit `f2148af`. Official
   checks now record restrictive terms for [Delhivery](https://www.delhivery.com/terms-and-conditions),
   the [India Budget site](https://www.indiabudget.gov.in/budget2023-24/website-policies.php),
@@ -354,16 +354,9 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   counts, and the stored/source PDF link without embedding starter-specific
   assumptions or leaking local storage paths.
 
-- An optional Playwright recorder now drives the real local no-key UI, adds
-  truthful captions, and never opens source-PDF links. Its `--redact-source`
-  mode masks source-derived names, values, evidence text, and provider outputs
-  before the first page paint. The resulting 29.64-second 1440x900 MP4 passed
-  `scripts/check_video.py` and is published at
-  `https://github.com/sting-raider/project-superjoin/releases/download/demo-video-v1/project-superjoin-public.mp4`.
-  SHA-256 is
-  `c671ea13598224922c8803cc0dadeff615f43429a6b0a2da1d435e20be0ec229`;
-  release verification returned HTTP 200. The full source-bearing capture
-  remains local.
+- No recorded walkthrough or prerecorded application state ships in the
+  repository. The project owner will record the final video from the live
+  product and add its link only after the asset exists.
 
 - The source-rights audit was refreshed against the current official policy
   URLs on 2026-09-08. Delhivery, India Budget, and IMF reuse terms still do not
@@ -504,7 +497,7 @@ Raw claims must not be rewritten when normalization, entity resolution, or revie
 | `runs`, `extraction_batches`, `run_events` | Durable task state, extraction checkpoints, retries, cancellation, progress, and reconnectable history for the single-process worker |
 | `model_calls`, `budget_ledger` | Request fingerprints, recorded responses, tokens, duration, reservations and spend |
 | `knowledge_changes` | Before/after versions, change category, affected claims, causal run or review decision |
-| `eval_runs`, `demo_cases`, `model_profiles` | Reproducibility metadata, case bookmarks, nonsecret configuration |
+| `eval_runs`, evaluation fixtures, `model_profiles` | Reproducibility metadata, isolated case references, nonsecret configuration |
 
 Implementation rules:
 
@@ -728,7 +721,7 @@ Enforce the cap in a durable budget ledger shared across runs and restarts.
 - Require known pricing or an explicit conservative cost bound for paid endpoints.
 - Show per-run spend, cumulative spend, remaining reservations, and price provenance.
 - Pause paid stages before the cap would be exceeded; retain all checkpoints.
-- Do not reset the cumulative implementation budget when resetting demo data.
+- Workspace deletion must never reset the cumulative implementation budget.
 
 Allocate the budget approximately as: $2 probes/development comparisons, $12 starter processing, $4 validation and targeted fixes, $2 reserve. Both model comparisons share the development allocation; the native parser comparison is local. Unused allocations can move between categories, but the total cap cannot.
 
@@ -1269,7 +1262,7 @@ Generated load data must be varied enough to exercise indexing; identical-file d
 
 Report provider latency separately from local processing. Do not claim large-scale live extraction performance from synthetic or cached timings.
 
-## 14. Resumability, observability, packaging, and demo integrity
+## 14. Resumability, observability, and packaging integrity
 
 ### Runtime discipline
 
@@ -1292,7 +1285,7 @@ Do not log credentials. Keep cache records separate from routine logs, fingerpri
 
 ### Dataset rights and publication gate
 
-Before committing starter PDFs or publishing any source-derived demo material:
+Before committing starter PDFs or publishing any source-derived material:
 
 1. Inspect the assignment wording and starter READMEs for explicit permissions and submission expectations.
 2. Inspect the original publisher’s applicable terms/license for each of the six source documents.
@@ -1381,7 +1374,6 @@ project-superjoin/
 ├── datasets/starter/
 │   ├── manifest.json
 │   └── README.md
-├── demo/
 ├── evals/
 │   ├── gold/
 │   ├── fixtures/
@@ -1451,7 +1443,7 @@ The rows below specify delivery order and exit conditions. They are **not** comm
 | 14 | Full starter run, targeted fixes, held-out evals, mandatory performance checks | All pages accounted for; measured reports; commit and push fixes individually |
 | 15 | Live-only empty-start packaging, workspace/source lifecycle, isolated eval data | Fresh-volume create/upload/restart/remove/restore/delete acceptance passes; separate runtime, UI, test, and documentation commits |
 | 16 | Accessibility, failure-state polish, exports, packaging | Clean-clone test and security checks pass; frequent focused improvement commits |
-| 17 | README, architecture/tradeoffs, demo recording, final audit; optional larger synthetic benchmarks | Complete submission with video under three minutes; docs committed progressively; largest synthetic benchmarks cannot delay release |
+| 17 | README, architecture/tradeoffs, owner-recorded video, final audit; optional larger synthetic benchmarks | Complete submission with video under three minutes; docs committed progressively; largest synthetic benchmarks cannot delay release |
 
 Develop thin UI views alongside earlier backend milestones so evidence can be inspected during development; milestone 13 completes the whole interface.
 
@@ -1488,7 +1480,7 @@ Supporting documentation covers:
 - Document prompt-injection threat model, isolation, and measured adversarial results.
 - Dataset redistribution audit, source attribution, and the chosen reproducible provisioning path.
 - Dependency licensing and short architecture decision records.
-- Requirement-to-feature/test/demo traceability.
+- Requirement-to-feature/test/verification traceability.
 - Troubleshooting, persistence, workspace/source lifecycle, and native development.
 - Any simplified review machinery and any unrun synthetic experiments, without implying core capabilities were deferred.
 
@@ -1508,7 +1500,7 @@ Document coding-agent assistance and actual AI tooling honestly.
 | 2:24–2:43 | Semantic timeline, evolving schema, and an auditable review decision |
 | 2:43–2:55 | One-container setup, evaluation result, and machine-consumable output |
 
-Record the actual application using reproducible browser steps, assemble with FFmpeg, and provide captions. Validate the final file with `python scripts/check_video.py path/to/project-superjoin-demo.mp4` before publication. Show only real workspaces, live runs, and persisted outputs; label any time compression.
+Record the actual application using reproducible browser steps and provide captions. Show only real workspaces, live runs, and persisted outputs; label any time compression.
 
 Publish the finished video as a repository release asset and link it from the README. Do not commit a large video binary into normal Git history. Include its visible third-party evidence in the publication-rights audit.
 

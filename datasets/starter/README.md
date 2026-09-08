@@ -16,9 +16,8 @@ The command computes hashes, records the observed page counts, and writes a
 local preparation manifest under `data/starter/`. It never substitutes a
 different document when a source is missing or has changed. The tracked
 manifest contains the official source URLs, expected logical documents, and
-the page selections used by the demo cases; the local preparation manifest is
+the page selections used by the starter evaluation cases; the local preparation manifest is
 the source of truth for the actual bytes available to an evaluator.
 
-The no-key application demo uses audited, compact claim/evidence records and
-does not require the PDFs to be present at runtime. When PDFs are available,
-the evidence viewer can use the prepared files for full page inspection.
+The application never loads this corpus automatically. It starts empty and
+only processes PDFs explicitly uploaded into a user-created workspace.

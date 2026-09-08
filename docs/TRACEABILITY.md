@@ -2,7 +2,7 @@
 
 The table maps the approved plan to the implemented review surface. File names are intentionally concrete so an evaluator can move from a requirement to the behavior that demonstrates it.
 
-| Requirement | Implementation surface | Verification/demo path |
+| Requirement | Implementation surface | Verification path |
 |---|---|---|
 | Immutable claims and exact provenance | `source_claims`, `claim_evidence`, `page_artifacts`, `evidence_anchors`; `app/provenance.py` | Evidence inspector and fact detail endpoints |
 | Numerical and semantic facts | `app/parser.py`, `app/normalization.py`, `app/pipeline.py` | Normalization and out-of-domain generalization tests |

@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "reference_kind": "evaluation-only starter case reference; not independently annotated gold",
+  "claims": [
+    {
+      "id": "starter-revenue-annual",
+      "document_id": "delhivery-annual",
+      "subject": "Delhivery",
+      "predicate": "revenue_from_services",
+      "normalized_value": "81415380000",
+      "period": "FY24",
+      "pdf_page": 85
+    },
+    {
+      "id": "starter-revenue-presentation",
+      "document_id": "delhivery-presentation",
+      "subject": "Delhivery",
+      "predicate": "revenue_from_services",
+      "normalized_value": "81420000000",
+      "period": "FY24",
+      "pdf_page": 6
+    },
+    {
+      "id": "starter-service-fy23",
+      "document_id": "delhivery-annual",
+      "subject": "Delhivery",
+      "predicate": "revenue_from_services",
+      "normalized_value": "72236470000",
+      "period": "FY23",
+      "pdf_page": 85
+    },
+    {
+      "id": "starter-customer-fy23",
+      "document_id": "delhivery-annual",
+      "subject": "Delhivery",
+      "predicate": "revenue_from_contracts_with_customers",
+      "normalized_value": "72253010000",
+      "period": "FY23",
+      "pdf_page": 85
+    },
+    {
+      "id": "starter-director-prospectus",
+      "document_id": "delhivery-prospectus",
+      "subject": "Suvir Suren Sujan",
+      "predicate": "director_role",
+      "normalized_value": "director",
+      "period": "2022-05-14",
+      "pdf_page": 88
+    },
+    {
+      "id": "starter-director-resignation",
+      "document_id": "delhivery-annual",
+      "subject": "Suvir Suren Sujan",
+      "predicate": "director_role",
+      "normalized_value": "ceased",
+      "period": "2023-08-24",
+      "pdf_page": 24
+    },
+    {
+      "id": "starter-survey-gdp-fy25",
+      "document_id": "economic-survey",
+      "subject": "India",
+      "predicate": "real_gdp_growth",
+      "normalized_value": "0.064",
+      "period": "FY25",
+      "pdf_page": 4
+    },
+    {
+      "id": "starter-rbi-gdp-fy25",
+      "document_id": "rbi-report",
+      "subject": "India",
+      "predicate": "real_gdp_growth",
+      "normalized_value": "0.065",
+      "period": "FY25",
+      "pdf_page": 8
+    },
+    {
+      "id": "starter-rbi-gdp-fy26",
+      "document_id": "rbi-report",
+      "subject": "India",
+      "predicate": "real_gdp_growth",
+      "normalized_value": "0.065",
+      "period": "FY26",
+      "pdf_page": 17
+    },
+    {
+      "id": "starter-imf-gdp-fy26",
+      "document_id": "imf-report",
+      "subject": "India",
+      "predicate": "real_gdp_growth",
+      "normalized_value": "0.066",
+      "period": "FY26",
+      "pdf_page": 3
+    }
+  ],
+  "relationships": [
+    {
+      "id": "starter-revenue-corroboration",
+      "claim_a": "starter-revenue-annual",
+      "claim_b": "starter-revenue-presentation",
+      "relationship_type": "CORROBORATES"
+    },
+    {
+      "id": "starter-director-supersedence",
+      "claim_a": "starter-director-prospectus",
+      "claim_b": "starter-director-resignation",
+      "relationship_type": "SUPERSEDES"
+    },
+    {
+      "id": "starter-gdp-vintage-reconciliation",
+      "claim_a": "starter-survey-gdp-fy25",
+      "claim_b": "starter-rbi-gdp-fy25",
+      "relationship_type": "RECONCILES"
+    },
+    {
+      "id": "starter-gdp-forecast-conflict",
+      "claim_a": "starter-rbi-gdp-fy26",
+      "claim_b": "starter-imf-gdp-fy26",
+      "relationship_type": "CONTRADICTS"
+    }
+  ]
+}

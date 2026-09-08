@@ -5,7 +5,7 @@
 `evals/reports/starter-corpus-e2e.json` records a run at `6f06ee5` over the
 locally supplied six-PDF archive: 511 pages, 1,646.668 seconds, 19,551 accepted
 numeric hints, and 21 quarantined hints. Exact matches against the existing
-demo case reference were **0/10 claims and 0/4 relationships**. This is a failed
+starter case reference were **0/10 claims and 0/4 relationships**. This is a failed
 case-recovery baseline, not a claim-quality result. The diagnostic reference
 is not independently annotated gold, and provider roles were all unavailable.
 
@@ -24,8 +24,8 @@ Reproduce with `python scripts/evaluate_starter_corpus.py --database data/new-co
 after preparing the local archive. The runner refuses to overwrite an existing
 database. PDFs, page text, and the evaluation database remain local under
 `data/`; the report contains aggregate measurements and case metadata only.
-Live provider quality, a production-generated demo snapshot, and independently
-verified gold annotations remain outstanding.
+Live provider measurements are recorded in the dated latency reports.
+Independently verified gold annotations remain outstanding.
 
 Project SuperJoin keeps evaluation inputs and reports under `evals/`. Reports distinguish a measured result, an offline check, and a skipped check. A skipped live benchmark is never presented as a model-quality claim.
 
@@ -59,7 +59,7 @@ Every metric report includes its denominator, split, prompt/model version, parse
 - `python scripts/benchmark_parsers.py ...` produces `evals/reports/parser-smoke.json`. The available local smoke uses the two-page assignment PDF and records native character/word counts and timing for pdfplumber, PyMuPDF, and pypdfium2 rendering. It is explicitly a smoke comparison, not the six-document/511-page benchmark.
 - `python scripts/benchmark_models.py --role extraction` and `--role embedding` produce reports with `status: skipped` when no provider endpoint/key is configured. They record the candidate models and comparison contract without inventing quality, cost, or compatibility results.
 - The current credentialed development evidence is recorded separately in `evals/reports/extraction-model-selection-nim.json` and `evals/reports/embedding-model-selection-nim.json`. The extraction report scores a three-case synthetic split against grounded claim annotations; the embedding report scores eight synthetic paraphrase pairs at Recall@1/3/10/20 and records native dimensions plus endpoint failures. These are bounded selection inputs, not full-corpus quality claims.
-- The application test suite covers normalization, API contracts, security fixtures, Trust Gate policy, review staleness, retrieval lanes, and demo seed behavior. CI repeats lint, compile, pytest, and the Vite build.
+- The application test suite covers normalization, API contracts, security fixtures, Trust Gate policy, review staleness, retrieval lanes, and empty-start behavior. CI repeats lint, compile, pytest, and the Vite build.
 
 ## What remains external
 

@@ -32,11 +32,13 @@ def _evidence_page(value: str) -> int | None:
 def evaluate(
     prepared_path: Path,
     source_manifest_path: Path,
+    case_reference_path: Path,
     database_path: Path,
     output_path: Path,
 ) -> dict[str, Any]:
     prepared = json.loads(prepared_path.read_text(encoding="utf-8"))
     source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+    case_reference = json.loads(case_reference_path.read_text(encoding="utf-8"))
     if not prepared.get("verified"):
         raise SystemExit("Prepared manifest is not verified")
     if database_path.exists():
@@ -94,8 +96,12 @@ def evaluate(
                 **counts,
             }
         )
-    expected_results, matched_claim_ids = _measure_expected_claims()
-    relationship_results = _measure_expected_relationships(matched_claim_ids)
+    expected_results, matched_claim_ids = _measure_expected_claims(
+        case_reference.get("claims", [])
+    )
+    relationship_results = _measure_expected_relationships(
+        case_reference.get("relationships", []), matched_claim_ids
+    )
     with db() as conn:
         totals = {
             "documents": conn.execute("SELECT COUNT(*) AS n FROM documents").fetchone()["n"],
@@ -143,7 +149,7 @@ def evaluate(
         "code_revision": subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
-        "reference_kind": "demo-case diagnostic reference; not independent gold",
+        "reference_kind": case_reference.get("reference_kind", "evaluation-only reference"),
         "generated_at": utc_now(),
         "provider_roles": {role: available(role) for role in ("extraction", "reasoning", "vision", "embedding")},
         "provider_models": {
@@ -188,13 +194,13 @@ def evaluate(
     return result
 
 
-def _measure_expected_claims() -> tuple[list[dict[str, Any]], dict[str, str]]:
-    from app.demo_data import DEMO_CLAIMS
-
+def _measure_expected_claims(
+    expected_claims: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     results = []
     matched: dict[str, str] = {}
     with db() as conn:
-        for expected in DEMO_CLAIMS:
+        for expected in expected_claims:
             rows = conn.execute(
                 "SELECT id,subject,predicate,normalized_value,period,evidence_json FROM claims WHERE document_id=?",
                 (expected["document_id"],),
@@ -206,13 +212,13 @@ def _measure_expected_claims() -> tuple[list[dict[str, Any]], dict[str, str]]:
                     and row["predicate"].casefold() == expected["predicate"].casefold()
                     and str(row["normalized_value"]) == str(expected["normalized_value"])
                     and row["period"] == expected["period"]
-                    and _evidence_page(row["evidence_json"]) == expected["evidence"]["pdf_page"]
+                    and _evidence_page(row["evidence_json"]) == expected["pdf_page"]
                 ),
                 None,
             )
             value_page = any(
                 str(row["normalized_value"]) == str(expected["normalized_value"])
-                and _evidence_page(row["evidence_json"]) == expected["evidence"]["pdf_page"]
+                and _evidence_page(row["evidence_json"]) == expected["pdf_page"]
                 for row in rows
             )
             if exact:
@@ -221,7 +227,7 @@ def _measure_expected_claims() -> tuple[list[dict[str, Any]], dict[str, str]]:
                 {
                     "expected_id": expected["id"],
                     "document_id": expected["document_id"],
-                    "pdf_page": expected["evidence"]["pdf_page"],
+                    "pdf_page": expected["pdf_page"],
                     "exact_match": bool(exact),
                     "value_and_page_match": value_page,
                     "matched_claim_id": exact["id"] if exact else None,
@@ -230,12 +236,12 @@ def _measure_expected_claims() -> tuple[list[dict[str, Any]], dict[str, str]]:
     return results, matched
 
 
-def _measure_expected_relationships(matched_claim_ids: dict[str, str]) -> dict[str, Any]:
-    from app.demo_data import DEMO_RELATIONSHIPS
-
+def _measure_expected_relationships(
+    expected_relationships: list[dict[str, Any]], matched_claim_ids: dict[str, str]
+) -> dict[str, Any]:
     items = []
     with db() as conn:
-        for expected in DEMO_RELATIONSHIPS:
+        for expected in expected_relationships:
             left = matched_claim_ids.get(expected["claim_a"])
             right = matched_claim_ids.get(expected["claim_b"])
             row = None
@@ -260,10 +266,26 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepared", type=Path, default=ROOT / "data" / "starter" / "prepared-manifest.json")
     parser.add_argument("--manifest", type=Path, default=ROOT / "datasets" / "starter" / "manifest.json")
+    parser.add_argument(
+        "--reference",
+        type=Path,
+        default=ROOT / "evals" / "fixtures" / "starter_case_reference.json",
+    )
     parser.add_argument("--database", type=Path, default=ROOT / "data" / "starter-corpus-eval.sqlite3")
     parser.add_argument("--output", type=Path, default=ROOT / "evals" / "reports" / "starter-corpus-e2e.json")
     args = parser.parse_args()
-    print(json.dumps(evaluate(args.prepared, args.manifest, args.database, args.output), indent=2))
+    print(
+        json.dumps(
+            evaluate(
+                args.prepared,
+                args.manifest,
+                args.reference,
+                args.database,
+                args.output,
+            ),
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

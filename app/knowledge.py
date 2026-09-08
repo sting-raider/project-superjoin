@@ -240,7 +240,7 @@ def _relationship_payload(a: Any, b: Any) -> dict[str, Any]:
 
 
 def relationship_cache_fingerprint(a: Any, b: Any) -> str:
-    """Return the stable replay/cache key for one ordered claim pair."""
+    """Return the stable cache key for one ordered claim pair."""
 
     left, right = sorted((a, b), key=lambda item: item["id"])
     compact = json.dumps(_relationship_payload(left, right), ensure_ascii=False, sort_keys=True)

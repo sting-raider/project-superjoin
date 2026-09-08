@@ -89,7 +89,7 @@ def evaluate(gold_path: Path, fixture_path: Path) -> dict[str, Any]:
         "report_version": "1.0",
         "project": "Project SuperJoin",
         "suite": "synthetic-out-of-domain-gold-v1",
-        "source_kind": "synthetic fixture; no starter documents or demo metadata",
+        "source_kind": "synthetic fixture; no starter documents or starter-case metadata",
         "gold_records": len(gold),
         "numeric_records": len(numeric_gold),
         "semantic_records": len(semantic_gold),

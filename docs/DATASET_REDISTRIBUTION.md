@@ -30,7 +30,7 @@ reviewed on 2026-09-08 and intentionally leave the affected sources uncleared:
   states that Delhivery owns or licenses the site content and restricts copying,
   storing, publishing, reproducing, modifying, derivative works, and distribution
   beyond personal non-commercial use without explicit permission. The two
-  Delhivery documents therefore remain **not cleared** for repository or demo
+  Delhivery documents therefore remain **not cleared** for repository or release
   redistribution.
 * **Economic Survey.** The current [India Budget Website Policies](https://www.indiabudget.gov.in/website-policies.php)
   page says site contents may not be reproduced partially or fully without
@@ -45,7 +45,7 @@ reviewed on 2026-09-08 and intentionally leave the affected sources uncleared:
 * **BSE filing and RBI report.** No source-specific reuse permission was
   verified during this audit. The official filing/report URLs remain useful for
   local attribution and retrieval, but they do not establish a redistribution
-  license. They remain **unresolved** and are not included in tracked demo
+  license. They remain **unresolved** and are not included in tracked release
   artifacts.
 
 The checked policies do not change the release gate: until a compatible license
@@ -66,21 +66,3 @@ Starter-derived gold labels and evaluation reports remain isolated under
 `evals/` and `datasets/`; production code does not import them. No starter
 source, derivative evidence snapshot, or preloaded fact database is shipped in
 the runtime.
-
-## Public redacted walkthrough
-
-The repository release contains a 29.64-second MP4 generated with the
-recorder's `--redact-source` mode:
-
-<https://github.com/sting-raider/project-superjoin/releases/download/demo-video-v1/project-superjoin-public.mp4>
-
-The capture was reviewed frame-by-frame after recording. Source-derived names,
-values, evidence text, and provider outputs are masked before the first page
-paint; only generic interface labels and captions remain visible. This asset
-predates the live-only runtime and is retained solely as historical release
-evidence; it is not the current product walkthrough. The asset passed
-`scripts/check_video.py`, returned
-HTTP 200 from the release URL, and has SHA-256
-`c671ea13598224922c8803cc0dadeff615f43429a6b0a2da1d435e20be0ec229`.
-This release does not clear or redistribute the original PDFs or copied source
-evidence.

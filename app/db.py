@@ -418,7 +418,6 @@ def init_db() -> None:
 def _ensure_columns(conn: sqlite3.Connection) -> None:
     """Add small telemetry columns when a pre-upgrade local DB is reused."""
 
-    conn.execute("DROP TABLE IF EXISTS demo_replay_state")
     additions = {
         "model_calls": {
             "request_chars": "INTEGER",

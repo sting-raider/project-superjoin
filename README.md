@@ -74,13 +74,9 @@ See `docs/DATASET_REDISTRIBUTION.md` for the publication boundary.
 
 ## Video Demo
 
-The repository is prepared for the project owner to record the final
-walkthrough from the live product. A strong route is: create a fresh workspace,
-upload actual PDFs, show run telemetry, inspect evidence, remove and restore a
-source, view Knowledge Diff, and query the Trust Gate. Label any waiting time
-removed in editing. `scripts/check_video.py` can verify the finished file is
-under three minutes. No demo content or recorded response data is included in
-the product.
+The project owner will add the final live-product walkthrough link here after
+recording it. The repository contains no preloaded workspace, source, fact,
+relationship, provider response, or video asset.
 
 ## Approach
 
