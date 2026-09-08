@@ -1476,7 +1476,7 @@ Document coding-agent assistance and actual AI tooling honestly.
 | 2:24–2:43 | Semantic timeline, evolving schema, and an auditable review decision |
 | 2:43–2:55 | No-key setup, evaluation result, and machine-consumable output |
 
-Record the actual application using reproducible browser steps, assemble with FFmpeg, and provide captions. Do not present replay as live paid extraction.
+Record the actual application using reproducible browser steps, assemble with FFmpeg, and provide captions. Validate the final file with `python scripts/check_video.py path/to/project-superjoin-demo.mp4` before publication. Do not present replay as live paid extraction.
 
 Publish the finished video as a repository release asset and link it from the README. Do not commit a large video binary into normal Git history. Include its visible third-party evidence in the publication-rights audit.
 

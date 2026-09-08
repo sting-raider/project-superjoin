@@ -22,8 +22,8 @@ redistribution permission is not recorded in
 Use browser zoom and a readable pointer, capture captions for every narrated
 state, and keep the final export at or below three minutes. If clips are
 recorded separately, concatenate them with a short FFmpeg concat list and
-verify duration with `ffprobe` before publication. Publish the finished file as
-a release asset rather than adding a large binary to normal Git history, and
-link the release URL from the README only after the release asset and its
-visible evidence have passed the rights preflight.
-
+verify duration before publication with the repository preflight:
+`python scripts/check_video.py path/to/project-superjoin-demo.mp4`. Publish the
+finished file as a release asset rather than adding a large binary to normal Git
+history, and link the release URL from the README only after the release asset
+and its visible evidence have passed the rights preflight.
