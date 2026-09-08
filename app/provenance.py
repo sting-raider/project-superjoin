@@ -110,12 +110,12 @@ def persist_interpretation(conn: Any, claim: dict[str, Any], claim_id: str, crea
             1,
             str(claim.get("subject") or "Document subject"),
             str(claim.get("predicate") or "unknown_predicate"),
-            claim.get("normalized_value"),
+            _storage_scalar(claim.get("normalized_value")),
             str(claim.get("value_type") or "text"),
-            claim.get("unit"),
-            claim.get("period"),
-            claim.get("modality"),
-            claim.get("scope"),
+            _storage_scalar(claim.get("unit")),
+            _storage_scalar(claim.get("period")),
+            _storage_scalar(claim.get("modality")),
+            _storage_scalar(claim.get("scope")),
             json.dumps(claim.get("normalization_trace") or [], ensure_ascii=False),
             "unresolved",
             "unresolved",
@@ -124,3 +124,11 @@ def persist_interpretation(conn: Any, claim: dict[str, Any], claim_id: str, crea
         ),
     )
     return interpretation_id
+
+
+def _storage_scalar(value: Any) -> str | int | float | None:
+    """Keep heterogeneous provider fields inspectable without leaking containers to SQLite."""
+
+    if value is None or isinstance(value, (str, int, float)):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)

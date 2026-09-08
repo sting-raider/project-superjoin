@@ -515,7 +515,8 @@ def test_failed_publication_resumes_from_completed_extraction_checkpoint(monkeyp
         "unit": "USD",
         "period": "FY26",
         "modality": "actual",
-        "scope": "company",
+        "scope": ["company"],
+        "normalized_value": ["provider", "supplied"],
         "evidence": {"pdf_page": 1, "text": "Nimbus Cloud ARR reached $42 million in FY26."},
     }]
     calls: list[str] = []
@@ -547,7 +548,13 @@ def test_failed_publication_resumes_from_completed_extraction_checkpoint(monkeyp
         process_document("r2", "d", "w", b"%PDF-resume", "source.pdf")
         with db() as conn:
             assert conn.execute("SELECT status FROM runs WHERE id='r2'").fetchone()["status"] == "complete"
-            assert conn.execute("SELECT COUNT(*) AS n FROM claims").fetchone()["n"] == 1
+            claim = conn.execute(
+                "SELECT normalized_value,scope FROM claims"
+            ).fetchone()
+            assert dict(claim) == {
+                "normalized_value": "42000000",
+                "scope": "company",
+            }
         assert calls == ["provider"]
     finally:
         object.__setattr__(settings, "database_path", original_database)

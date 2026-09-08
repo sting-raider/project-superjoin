@@ -347,7 +347,12 @@ def _extract_document_batches(
         )
         cached = _completed_batch(document_id, digest)
         if cached is not None:
-            results[batch.index] = cached
+            # Checkpoints can outlive provider-contract and validation changes.
+            # Reapply the current generic grounding boundary before publication
+            # instead of trusting an older cached response shape.
+            results[batch.index] = _validated_grounded_claims(
+                cached, batch.candidates, batch.pages
+            )
             continue
         _checkpoint_batch(document_id, run_id, batch, digest, "processing")
         future = executor.submit(
