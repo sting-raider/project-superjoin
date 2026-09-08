@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -396,6 +397,8 @@ def _model_claim_grounded(item: dict[str, Any], candidates: list[dict[str, Any]]
         source for source in sources
         if evidence_text in " ".join(str(source.get("text") or "").split()).casefold()
     ]
+    if not matching or not _claim_value_in_evidence(item, evidence_text):
+        return False
     cited_page = evidence.get("pdf_page")
     if cited_page is not None:
         return any(str(source.get("pdf_page")) == str(cited_page) for source in matching)
@@ -406,6 +409,32 @@ def _model_claim_grounded(item: dict[str, Any], candidates: list[dict[str, Any]]
     if page is not None:
         evidence["pdf_page"] = page
     return bool(matching)
+
+
+def _claim_value_in_evidence(item: dict[str, Any], evidence_text: str) -> bool:
+    """Reject model values that only occur as a substring of another token."""
+
+    raw_value = " ".join(str(item.get("raw_value") or "").split()).casefold()
+    if not raw_value:
+        return False
+    value_type = str(item.get("value_type") or "text").casefold()
+    if value_type not in {
+        "number",
+        "money",
+        "percentage",
+        "percentage_points",
+        "rate",
+        "range",
+    }:
+        return raw_value in evidence_text
+    numbers = re.findall(r"(?<![a-z0-9])[-+]?\d+(?:[.,]\d+)?(?![a-z0-9])", raw_value)
+    return bool(numbers) and all(
+        re.search(
+            rf"(?<![a-z0-9]){re.escape(number)}(?![a-z0-9])",
+            evidence_text,
+        )
+        for number in numbers
+    )
 
 
 def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_id: str) -> list[dict[str, Any]]:

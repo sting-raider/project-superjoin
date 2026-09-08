@@ -78,3 +78,13 @@ def test_model_evidence_must_match_a_source_candidate() -> None:
         [],
         [{"pdf_page": 2, "text": "The base case says GDP growth is projected at 6.5% in FY26."}],
     )
+
+
+def test_model_numeric_value_cannot_be_grounded_by_a_year_suffix() -> None:
+    source = [{"pdf_page": 1, "text": "Nimbus Cloud reported annual recurring revenue of $42 million in FY26."}]
+    claim = {
+        "value_type": "number",
+        "raw_value": "26",
+        "evidence": {"pdf_page": 1, "text": source[0]["text"]},
+    }
+    assert not _model_claim_grounded(claim, [], source)
