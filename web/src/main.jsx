@@ -205,9 +205,50 @@ function Runs({ runs, onRefresh }) {
 
 function Settings() {
   const [settings, setSettings] = useState(null)
-  useEffect(() => { get('/settings').then(setSettings) }, [])
+  const [activeRole, setActiveRole] = useState('extraction')
+  const [drafts, setDrafts] = useState({})
+  const [status, setStatus] = useState('')
+  const [saving, setSaving] = useState(false)
   const roleCards = [['extraction', 'Extraction'], ['reasoning', 'Reasoning'], ['vision', 'Vision'], ['embeddings', 'Embeddings']]
-  return <div className="content"><div className="section-heading"><div><span className="eyebrow">RUNTIME CONFIGURATION</span><h2>Settings</h2><p>Each role accepts any configured OpenAI-compatible endpoint and model.</p></div></div><div className="settings-grid">{roleCards.map(([key, label]) => { const role = settings?.roles?.[key]; return <div className="setting-card" key={key}><div className="setting-head"><span className="eyebrow">{label}</span><Badge tone={role?.configured ? 'good' : 'warn'}>{role?.configured ? 'configured' : 'offline'}</Badge></div><strong>{role?.model || 'model not configured'}</strong><small>{role?.base_url || 'Endpoint not configured'}</small><small>{role?.key_configured ? 'API key configured' : 'No API key (local endpoints may omit one)'}</small><small>{role?.chat_path || role?.embedding_path || 'path unavailable'} · auth: {role?.auth_header || 'default'} {role?.auth_scheme || '(no scheme)'}</small><small>{role?.send_model ? 'model field sent' : 'model field omitted'} · {key === 'embeddings' ? `${role?.dimensions || '—'} dimensions · ${role?.task_type || 'task unspecified'} · ${role?.timeout_seconds || '—'}s` : `${role?.max_output_tokens || '—'} output tokens · ${role?.timeout_seconds || '—'}s · ${role?.structured_output_mode || 'response'}`}</small></div> })}</div><div className="panel settings-note"><Badge tone={settings?.provider_configured ? 'good' : 'warn'}>{settings?.provider_configured ? 'Live provider configured' : 'Recorded demo mode'}</Badge><p>Secrets are never returned to this screen. Configure role-specific base URLs, keys, model names, paths, and limits in the environment; the bundled snapshot requires no key.</p><div className="budget-line"><span>Budget remaining</span><strong>${settings?.budget?.remaining_usd?.toFixed?.(4) || '20.0000'}</strong></div><div className="budget-line"><span>Transient provider retries</span><strong>{settings?.provider_retry?.attempts || 1} attempts · {settings?.provider_retry?.backoff_seconds || 0}s base backoff</strong></div></div></div>
+  const hydrate = (data) => {
+    setSettings(data)
+    setDrafts((current) => {
+      const next = { ...current }
+      roleCards.forEach(([key]) => {
+        const role = data.roles?.[key] || {}
+        next[key] = {
+          base_url: role.base_url || '', model: role.model || '', path: role.chat_path || role.embedding_path || '',
+          api_key: '', clear_api_key: false, timeout_seconds: role.timeout_seconds || 90,
+          max_output_tokens: role.max_output_tokens || 1200, concurrency: role.concurrency || 1,
+          structured_output_mode: role.structured_output_mode || 'json_object', auth_header: role.auth_header || 'Authorization',
+          auth_scheme: role.auth_scheme ?? 'Bearer', send_model: role.send_model ?? true,
+          dimensions: role.dimensions || 768, include_dimensions: role.include_dimensions ?? true,
+          task_type: role.task_type || 'retrieval_document', extra_body_json: '',
+        }
+      })
+      return next
+    })
+  }
+  useEffect(() => { get('/settings').then(hydrate).catch((error) => setStatus(error.message)) }, [])
+  const draft = drafts[activeRole] || {}
+  const change = (field, value) => setDrafts((current) => ({ ...current, [activeRole]: { ...current[activeRole], [field]: value } }))
+  const applyPreset = (id) => {
+    const preset = settings?.presets?.find((item) => item.id === id)
+    if (!preset) return
+    setDrafts((current) => ({ ...current, [activeRole]: { ...current[activeRole], ...Object.fromEntries(Object.entries(preset).filter(([key]) => !['id', 'label'].includes(key))) } }))
+  }
+  const save = async (event) => {
+    event.preventDefault(); setSaving(true); setStatus('')
+    const payload = { ...draft }
+    if (!payload.api_key) delete payload.api_key
+    if (activeRole === 'embeddings') { delete payload.max_output_tokens; delete payload.structured_output_mode } else { delete payload.dimensions; delete payload.include_dimensions; delete payload.task_type }
+    try { hydrate(await post(`/settings/${activeRole}`, payload)); setStatus(`${activeRole} configuration is active in this process.`) } catch (error) { setStatus(error.message) } finally { setSaving(false) }
+  }
+  const testConnection = async () => {
+    setSaving(true); setStatus(`Testing ${activeRole}…`)
+    try { const result = await post(`/settings/${activeRole}/test`); setStatus(`Connected to ${result.model} in ${result.latency_ms} ms.`) } catch (error) { setStatus(error.message) } finally { setSaving(false) }
+  }
+  return <div className="content"><div className="section-heading"><div><span className="eyebrow">RUNTIME CONFIGURATION</span><h2>Provider desk</h2><p>Configure each OpenAI-compatible role independently. Changes last until this container restarts.</p></div></div><div className="provider-tabs" role="tablist">{roleCards.map(([key, label]) => { const role = settings?.roles?.[key]; return <button key={key} role="tab" aria-selected={activeRole === key} className={activeRole === key ? 'provider-tab active' : 'provider-tab'} onClick={() => { setActiveRole(key); setStatus('') }}><span>{label}</span><Badge tone={role?.configured ? 'good' : 'warn'}>{role?.configured ? 'ready' : 'offline'}</Badge><small>{role?.model || 'No model'}</small></button> })}</div><form className="provider-editor" onSubmit={save}><div className="provider-editor-head"><div><span className="eyebrow">{activeRole.toUpperCase()} ROLE</span><h3>Connection contract</h3></div><select aria-label="Provider preset" defaultValue="" onChange={(event) => applyPreset(event.target.value)}><option value="" disabled>Choose a preset…</option>{settings?.presets?.map((preset) => <option value={preset.id} key={preset.id}>{preset.label}</option>)}</select></div><div className="provider-fields"><label className="wide">BASE URL<input value={draft.base_url || ''} onChange={(event) => change('base_url', event.target.value)} placeholder="https://provider.example/v1" /></label><label>MODEL<input value={draft.model || ''} onChange={(event) => change('model', event.target.value)} placeholder="Any provider model name" /></label><label>API KEY<input type="password" autoComplete="new-password" value={draft.api_key || ''} onChange={(event) => change('api_key', event.target.value)} placeholder={settings?.roles?.[activeRole]?.key_configured ? 'Configured · enter to replace' : 'Optional for local endpoints'} /></label><label className="wide">REQUEST PATH<input value={draft.path || ''} onChange={(event) => change('path', event.target.value)} placeholder={activeRole === 'embeddings' ? '/embeddings' : '/chat/completions'} /></label><label>TIMEOUT · SECONDS<input type="number" min="1" max="600" value={draft.timeout_seconds || 90} onChange={(event) => change('timeout_seconds', Number(event.target.value))} /></label><label>CONCURRENCY<input type="number" min="1" max="64" value={draft.concurrency || 1} onChange={(event) => change('concurrency', Number(event.target.value))} /></label>{activeRole === 'embeddings' ? <><label>DIMENSIONS<input type="number" min="1" value={draft.dimensions || 768} onChange={(event) => change('dimensions', Number(event.target.value))} /></label><label>TASK TYPE<input value={draft.task_type || ''} onChange={(event) => change('task_type', event.target.value)} /></label></> : <><label>OUTPUT TOKEN LIMIT<input type="number" min="1" value={draft.max_output_tokens || 1200} onChange={(event) => change('max_output_tokens', Number(event.target.value))} /></label><label>STRUCTURED OUTPUT<select value={draft.structured_output_mode || 'none'} onChange={(event) => change('structured_output_mode', event.target.value)}><option value="json_object">JSON object</option><option value="json_schema">JSON schema</option><option value="none">None</option></select></label></>}<label>AUTH HEADER<input value={draft.auth_header || ''} onChange={(event) => change('auth_header', event.target.value)} /></label><label>AUTH SCHEME<input value={draft.auth_scheme ?? ''} onChange={(event) => change('auth_scheme', event.target.value)} placeholder="Bearer or blank" /></label><label className="wide">EXTRA REQUEST BODY · JSON<input value={draft.extra_body_json || ''} onChange={(event) => change('extra_body_json', event.target.value)} placeholder='{"thinking":{"type":"disabled"}}' /></label></div><div className="provider-controls"><label className="checkbox"><input type="checkbox" checked={draft.send_model ?? true} onChange={(event) => change('send_model', event.target.checked)} /> Send model field</label>{activeRole === 'embeddings' && <label className="checkbox"><input type="checkbox" checked={draft.include_dimensions ?? true} onChange={(event) => change('include_dimensions', event.target.checked)} /> Send dimensions</label>}<label className="checkbox danger"><input type="checkbox" checked={draft.clear_api_key || false} onChange={(event) => change('clear_api_key', event.target.checked)} /> Clear saved runtime key</label><div className="provider-actions"><button type="button" className="secondary-button" disabled={saving} onClick={testConnection}>Test connection</button><button className="upload-button" disabled={saving} type="submit">{saving ? 'Working…' : 'Apply settings'}</button></div></div>{status && <p className="provider-status" role="status">{status}</p>}</form><div className="settings-ledger"><div><span>Parser</span><strong>{settings?.parser?.backend || 'liteparse'} · {settings?.parser?.local_ocr_enabled ? 'selective local OCR' : 'native only'}</strong></div><div><span>Budget remaining</span><strong>${settings?.budget?.remaining_usd?.toFixed?.(4) || '20.0000'}</strong></div><div><span>Retry policy</span><strong>{settings?.provider_retry?.attempts || 1} attempts · {settings?.provider_retry?.backoff_seconds || 0}s backoff</strong></div><p>API keys stay in process memory, are never returned by the API, and disappear when the container restarts. Remote endpoints require HTTPS; local HTTP is restricted to localhost.</p></div></div>
 }
 
 function Review({ workspace, reviews, facts, onRefresh }) {
