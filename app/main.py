@@ -7,6 +7,7 @@ import io
 import json
 import re
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -22,16 +23,27 @@ from .pipeline import process_document
 from .providers import ProviderError, available, public_endpoint
 from .retrieval import create_embedding_space, embed_claim, search_claims
 
-app = FastAPI(title="Project SuperJoin", version="0.1.0", description="Evidence-first temporal fact knowledge layer")
 
-
-@app.on_event("startup")
 def startup() -> None:
     init_db()
     if settings.demo_mode:
         from .seed import seed_demo
 
         seed_demo()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    startup()
+    yield
+
+
+app = FastAPI(
+    title="Project SuperJoin",
+    version="0.1.0",
+    description="Evidence-first temporal fact knowledge layer",
+    lifespan=lifespan,
+)
 
 
 def _workspace_or_default(workspace_id: str | None) -> str:
