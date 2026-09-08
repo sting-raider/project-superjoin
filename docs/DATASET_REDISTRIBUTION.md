@@ -1,6 +1,9 @@
 # Starter dataset redistribution audit
 
 Audit date: 2026-09-08. Auditor: Project SuperJoin implementation record.
+The official policy links below were rechecked on the audit date; a current
+page being reachable does not itself grant permission to redistribute source
+material.
 
 The six starter PDFs are third-party publications. The assignment materials
 identify the files and provide official source links, but the repository does
@@ -29,7 +32,7 @@ reviewed on 2026-09-08 and intentionally leave the affected sources uncleared:
   beyond personal non-commercial use without explicit permission. The two
   Delhivery documents therefore remain **not cleared** for repository or demo
   redistribution.
-* **Economic Survey.** The [India Budget Website Policies](https://www.indiabudget.gov.in/budget2023-24/website-policies.php)
+* **Economic Survey.** The current [India Budget Website Policies](https://www.indiabudget.gov.in/website-policies.php)
   page says site contents may not be reproduced partially or fully without
   permission from the Ministry of Finance and requires source acknowledgement.
   The Economic Survey remains **not cleared**.
@@ -40,8 +43,10 @@ reviewed on 2026-09-08 and intentionally leave the affected sources uncleared:
   outputs by default. The report remains **not cleared** pending a source-
   specific permission or compatible license review.
 * **BSE filing and RBI report.** No source-specific reuse permission was
-  verified during this audit. They remain **unresolved** and are not included
-  in tracked demo artifacts.
+  verified during this audit. The official filing/report URLs remain useful for
+  local attribution and retrieval, but they do not establish a redistribution
+  license. They remain **unresolved** and are not included in tracked demo
+  artifacts.
 
 The checked policies do not change the release gate: until a compatible license
 or written permission is recorded for every source, do not commit source PDFs,

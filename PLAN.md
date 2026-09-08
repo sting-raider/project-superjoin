@@ -339,6 +339,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   release link remains intentionally unchecked until visible demo evidence
   passes the source-rights publication gate.
 
+- The source-rights audit was refreshed against the current official policy
+  URLs on 2026-09-08. Delhivery, India Budget, and IMF reuse terms still do not
+  clear the copied evidence/video; BSE and RBI source-specific permission is
+  still unverified. The release preflight therefore remains clean for Git but
+  correctly refuses to treat local capture as a publishable asset.
+
 ### Resolved implementation simplifications
 
 - The runtime uses Python's `sqlite3` with an explicit schema initializer and

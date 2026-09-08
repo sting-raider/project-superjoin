@@ -18,7 +18,7 @@ def test_dataset_rights_audit_covers_every_starter_source_and_keeps_release_gate
         assert source in audit
     for policy_url in (
         "https://www.delhivery.com/terms-and-conditions",
-        "https://www.indiabudget.gov.in/budget2023-24/website-policies.php",
+        "https://www.indiabudget.gov.in/website-policies.php",
         "https://www.imf.org/en/about/copyright-and-terms",
     ):
         assert policy_url in audit
