@@ -36,5 +36,7 @@ def untrusted_document_block(text: str) -> str:
 
 def validate_model_claim(item: dict[str, Any]) -> bool:
     evidence = item.get("evidence") or {}
+    if not isinstance(evidence, dict):
+        return False
     text = str(evidence.get("text") or "")
     return bool(text) and not is_suspicious(text) and not item.get("requested_status") in {"verified", "approved"}

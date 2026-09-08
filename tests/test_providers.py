@@ -134,6 +134,34 @@ def test_embedding_request_accepts_a_batch(monkeypatch) -> None:
     assert len(result.data["data"]) == 2
 
 
+def test_configured_extra_body_supports_arbitrary_compatible_fields(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="http://provider.example/v1",
+        extraction_model="vendor/arbitrary-model",
+        extraction_extra_body_json=json.dumps(
+            {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "reasoning_budget": 0,
+            }
+        ),
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    payloads: list[dict[str, Any]] = []
+
+    def fake_urlopen(request, timeout):
+        payloads.append(json.loads(request.data.decode("utf-8")))
+        return _Response({"choices": [{"message": {"content": '{"claims":[]}'}}]})
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+
+    providers.structured_chat("extraction", "system", "user")
+
+    assert payloads[0]["model"] == "vendor/arbitrary-model"
+    assert payloads[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payloads[0]["reasoning_budget"] == 0
+
+
 def test_role_concurrency_is_global_across_callers(monkeypatch) -> None:
     configured = replace(
         settings,

@@ -79,6 +79,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_scheme": "extraction_auth_scheme",
         "send_model": "extraction_send_model",
         "concurrency": "extraction_concurrency",
+        "extra_body_json": "extraction_extra_body_json",
     },
     "reasoning": {
         "base_url": "reasoning_base_url",
@@ -92,6 +93,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_scheme": "reasoning_auth_scheme",
         "send_model": "reasoning_send_model",
         "concurrency": "reasoning_concurrency",
+        "extra_body_json": "reasoning_extra_body_json",
     },
     "vision": {
         "base_url": "vision_base_url",
@@ -105,6 +107,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_scheme": "vision_auth_scheme",
         "send_model": "vision_send_model",
         "concurrency": "vision_concurrency",
+        "extra_body_json": "vision_extra_body_json",
     },
     "embedding": {
         "base_url": "embedding_base_url",
@@ -116,6 +119,7 @@ _ROLE_FIELDS: dict[str, dict[str, str]] = {
         "auth_scheme": "embedding_auth_scheme",
         "send_model": "embedding_send_model",
         "concurrency": "embedding_concurrency",
+        "extra_body_json": "embedding_extra_body_json",
     },
 }
 
@@ -159,6 +163,7 @@ def provider_identity(role: str, model: str | None = None) -> str:
         str(config.get("auth_scheme") or ""),
         str(config.get("send_model")),
         str(config.get("structured_output_mode") or ""),
+        str(config.get("extra_body_json") or ""),
     ]
     if canonical == "embedding":
         shape.extend(
@@ -201,6 +206,21 @@ def _headers(config: dict[str, Any]) -> dict[str, str]:
         scheme = str(config.get("auth_scheme") or "")
         headers[header] = f"{scheme} {api_key}".strip()
     return headers
+
+
+def _merge_extra_body(payload: dict[str, Any], config: dict[str, Any], role: str) -> None:
+    """Merge deployment-specific OpenAI-compatible fields from configuration."""
+
+    raw = str(config.get("extra_body_json") or "").strip()
+    if not raw:
+        return
+    try:
+        extra = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ProviderError(f"{role} extra body is not valid JSON: {exc}") from exc
+    if not isinstance(extra, dict):
+        raise ProviderError(f"{role} extra body must be a JSON object")
+    payload.update(extra)
 
 
 _role_slots_lock = threading.Lock()
@@ -347,6 +367,7 @@ def structured_chat(role: str, system: str, user: str, model: str | None = None,
     mode = str(config["structured_output_mode"] or "none")
     if mode != "none":
         payload["response_format"] = {"type": mode}
+    _merge_extra_body(payload, config, role)
     return _post("chat", payload, chosen, role, output_limit)
 
 
@@ -368,6 +389,7 @@ def vision_chat(system: str, user: str, image_bytes: bytes, model: str | None = 
     mode = str(config["structured_output_mode"] or "none")
     if mode != "none":
         payload["response_format"] = {"type": mode}
+    _merge_extra_body(payload, config, "vision")
     return _post("chat", payload, chosen, "vision", output_limit)
 
 
@@ -379,6 +401,7 @@ def embed(text: str | list[str], model: str | None = None) -> ProviderResult:
         payload["model"] = chosen
     if settings.embedding_include_dimensions:
         payload["dimensions"] = settings.embedding_dimensions
+    _merge_extra_body(payload, config, "embedding")
     return _post("embedding", payload, chosen, "embedding")
 
 
