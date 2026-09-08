@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "revision": "a00a164",
+  "captured_at": "2026-09-08T04:10:00Z",
+  "provider_profile": {
+    "extraction_model": "nvidia/nemotron-3-super-120b-a12b",
+    "reasoning_model": "nvidia/nemotron-3-super-120b-a12b",
+    "embedding_model": "nvidia/nemotron-3-embed-1b",
+    "extraction_output_limit": 1200,
+    "note": "Credentials and private endpoint query data are excluded."
+  },
+  "runs": [
+    {
+      "fixture": "1-page synthetic SaaS update",
+      "run_id": "run-32db014e27ac",
+      "status": "complete",
+      "observed_elapsed_seconds": 30.968,
+      "persisted_claims": 2,
+      "network_calls": 4,
+      "calls_by_role": {"extraction": 1, "registry-embedding": 2, "registry-resolution": 1},
+      "quality_observation": "Two grounded values were found, but explicit entity and FY26 context were lost."
+    },
+    {
+      "fixture": "27-page earnings presentation",
+      "run_id": "run-65a735224021",
+      "status": "processing",
+      "last_stage": "relationships",
+      "observed_elapsed_seconds_lower_bound": 2004.748,
+      "persisted_claims": 410,
+      "network_calls_at_capture": 1693,
+      "calls_by_role_status": {
+        "extraction.complete": 2,
+        "extraction.failed": 4,
+        "registry-embedding.complete": 192,
+        "registry-resolution.complete": 131,
+        "registry-resolution.failed": 27,
+        "reasoning.complete": 128,
+        "reasoning.failed": 1209
+      },
+      "quality_observation": "Five extraction batches produced 410 candidates; relationship work had not completed."
+    },
+    {
+      "fixture": "100-page annual report",
+      "run_id": "run-a25ccea1bc35",
+      "status": "failed",
+      "observed_elapsed_seconds": 4061.039,
+      "persisted_claims": 2958,
+      "network_calls": 1892,
+      "calls_by_role_status": {
+        "extraction.complete": 47,
+        "extraction.failed": 9,
+        "registry-embedding.complete": 1003,
+        "registry-resolution.complete": 189,
+        "registry-resolution.failed": 644
+      },
+      "failure": "UNIQUE constraint failed: predicates.workspace_id, predicates.key",
+      "quality_observation": "All 47 completed extraction calls hit the configured 1200-token output ceiling."
+    }
+  ],
+  "conclusion": "Registry and relationship fan-out dominates live latency; extraction responses are also consistently output-limited. This is a before-only baseline and makes no speed-improvement claim."
+}
