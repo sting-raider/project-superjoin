@@ -54,6 +54,10 @@ def test_source_remove_and_restore_rebuilds_active_knowledge(tmp_path: Path) -> 
             removed = client.post("/api/v1/documents/source-board/archive")
             assert removed.status_code == 200
             assert removed.json()["document"]["status"] == "archived"
+            archived_revision = removed.json()["revision"]
+            repeated = client.post("/api/v1/documents/source-board/archive")
+            assert repeated.json()["changed"] is False
+            assert repeated.json()["revision"] == archived_revision
             with db() as conn:
                 assert conn.execute(
                     "SELECT extraction_status FROM claims WHERE document_id='source-board'"
@@ -63,6 +67,10 @@ def test_source_remove_and_restore_rebuilds_active_knowledge(tmp_path: Path) -> 
                     (workspace_id,),
                 ).fetchone()[0])
             assert {item["document_id"] for item in active_evidence} == {"source-filing"}
+            overview = client.get(
+                "/api/v1/overview", params={"workspace_id": workspace_id}
+            ).json()
+            assert overview["counts"]["grounded_claims"] == 1
 
             restored = client.post("/api/v1/documents/source-board/reactivate")
             assert restored.status_code == 200

@@ -207,7 +207,9 @@ def overview(workspace_id: str | None = None) -> dict[str, Any]:
         status_rows = conn.execute("SELECT status,COUNT(*) AS count FROM facts WHERE workspace_id=? AND active=1 GROUP BY status", (workspace_id,)).fetchall()
         latest = conn.execute("SELECT * FROM changes WHERE workspace_id=? ORDER BY created_at DESC LIMIT 8", (workspace_id,)).fetchall()
         grounded = conn.execute(
-            "SELECT COUNT(*) FROM claims WHERE workspace_id=? AND grounding_status='grounded'",
+            """SELECT COUNT(*) FROM claims c JOIN documents d ON d.id=c.document_id
+            WHERE c.workspace_id=? AND c.grounding_status='grounded'
+              AND c.extraction_status='accepted' AND d.status<>'archived'""",
             (workspace_id,),
         ).fetchone()[0]
         relationship_rows = conn.execute(
@@ -262,8 +264,9 @@ def archive_document(document_id: str) -> dict[str, Any]:
         result = set_document_archived(document_id, True)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    assess_relationships(result["workspace_id"])
-    rebuild_workspace(result["workspace_id"], advance_revision=False)
+    if result["changed"]:
+        assess_relationships(result["workspace_id"])
+        rebuild_workspace(result["workspace_id"], advance_revision=False)
     return result
 
 
@@ -273,8 +276,9 @@ def reactivate_document(document_id: str) -> dict[str, Any]:
         result = set_document_archived(document_id, False)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    assess_relationships(result["workspace_id"])
-    rebuild_workspace(result["workspace_id"], advance_revision=False)
+    if result["changed"]:
+        assess_relationships(result["workspace_id"])
+        rebuild_workspace(result["workspace_id"], advance_revision=False)
     return result
 
 

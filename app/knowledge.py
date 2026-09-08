@@ -492,6 +492,22 @@ def set_document_archived(document_id: str, archived: bool) -> dict[str, Any]:
         document = conn.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
         if not document:
             raise ValueError("Document not found")
+        already_in_state = (archived and document["status"] == "archived") or (
+            not archived and document["status"] != "archived"
+        )
+        if already_in_state:
+            revision = int(
+                conn.execute(
+                    "SELECT active_revision FROM workspaces WHERE id=?",
+                    (document["workspace_id"],),
+                ).fetchone()["active_revision"]
+            )
+            return {
+                "document": dict(document),
+                "workspace_id": document["workspace_id"],
+                "revision": revision,
+                "changed": False,
+            }
         status = "archived" if archived else "complete"
         conn.execute("UPDATE documents SET status=? WHERE id=?", (status, document_id))
         extraction_status = "archived" if archived else "accepted"
@@ -513,7 +529,7 @@ def set_document_archived(document_id: str, archived: bool) -> dict[str, Any]:
                 conn.execute("UPDATE reviews SET stale=1,status='stale' WHERE fact_id=? AND status='active'", (fact["id"],))
         conn.execute("UPDATE workspaces SET active_revision=? WHERE id=?", (revision, workspace_id))
         conn.execute("INSERT INTO changes(id,workspace_id,run_id,kind,summary,details_json,created_at) VALUES(?,?,?,?,?,?,?)", (f"change-document-{document_id}-{revision}", workspace_id, None, "document_archived" if archived else "document_reactivated", f"Document {'archived' if archived else 'reactivated'}: {document['name']}", json.dumps({"document_id": document_id, "archived": archived, "knowledge_revision": revision}), utc_now()))
-        return {"document": dict(conn.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()), "workspace_id": workspace_id, "revision": revision}
+        return {"document": dict(conn.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()), "workspace_id": workspace_id, "revision": revision, "changed": True}
 
 
 def resolve_fact(workspace_id: str, subject: str, predicate: str, period: str | None = None, policy: str = "strict", known_at_revision: int | None = None) -> dict[str, Any]:
