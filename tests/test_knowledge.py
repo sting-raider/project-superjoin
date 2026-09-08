@@ -35,6 +35,16 @@ def test_same_explicit_context_does_not_infer_a_hidden_vintage() -> None:
     assert relationship == "CONTRADICTS"
 
 
+def test_equivalent_fiscal_labels_and_modalities_corroborate_unseen_metric() -> None:
+    relationship, _, dimensions, _ = compare_claim_pair(
+        _claim(subject="Nimbus Cloud", predicate="net_revenue_retention", period="FY26", modality="asserted", normalized_value="1.12"),
+        _claim(subject="Nimbus Cloud", predicate="net_revenue_retention", period="FY2026", modality="actual", normalized_value="1.12"),
+    )
+    assert relationship == "CORROBORATES"
+    assert dimensions["period"] == "MATCH"
+    assert dimensions["modality"] == "MATCH"
+
+
 def test_temporal_semantic_change_abstains_for_reasoning_lane() -> None:
     relationship, _, _, _ = compare_claim_pair(
         _claim(subject="Suvir Suren Sujan", predicate="director_role", period="2022-05-14", value_type="semantic", normalized_value="director", evidence_json=json.dumps({"text": "director"})),

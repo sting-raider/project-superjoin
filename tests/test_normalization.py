@@ -1,6 +1,13 @@
 from decimal import Decimal
 
-from app.normalization import compare_numeric, parse_interval, parse_numeric, parse_period
+from app.normalization import (
+    compare_numeric,
+    normalize_modality,
+    normalize_period_label,
+    parse_interval,
+    parse_numeric,
+    parse_period,
+)
 
 
 def test_indian_money_units_normalize_to_base_amount() -> None:
@@ -29,6 +36,16 @@ def test_parenthetical_negative() -> None:
 def test_fiscal_periods_are_stable() -> None:
     assert parse_period("for the year ended March 31, 2024") == "FY2024"
     assert parse_period("FY 2025/26 projection") == "FY2025/26"
+    assert normalize_period_label("FY24") == "FY2024"
+    assert normalize_period_label("Q1 FY 23") == "Q1FY2023"
+    assert normalize_period_label("nine months ended December 31, 2024") == "nine months ended December 31, 2024"
+
+
+def test_source_modalities_have_a_stable_generic_vocabulary() -> None:
+    assert normalize_modality("ASSERTED") == "reported"
+    assert normalize_modality("actual") == "reported"
+    assert normalize_modality("projected") == "forecast"
+    assert normalize_modality("management_guidance") == "management_guidance"
 
 
 def test_rounding_comparison_is_explicit() -> None:

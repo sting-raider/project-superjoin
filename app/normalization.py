@@ -145,6 +145,40 @@ def parse_period(text: str) -> str | None:
     return f"FY{match.group(1)}" if match else None
 
 
+def normalize_period_label(value: str | None) -> str | None:
+    """Canonicalize common fiscal labels without inventing missing context."""
+
+    if value is None or not str(value).strip():
+        return None
+    compact = re.sub(r"\s+", "", str(value).upper())
+    match = re.fullmatch(r"FY(\d{2})", compact)
+    if match:
+        return f"FY20{match.group(1)}"
+    match = re.fullmatch(r"Q([1-4])FY(\d{2})", compact)
+    if match:
+        return f"Q{match.group(1)}FY20{match.group(2)}"
+    return compact if re.fullmatch(r"(?:FY20\d{2}(?:/\d{2})?|Q[1-4]FY20\d{2}|20\d{2}/\d{2})", compact) else str(value).strip()
+
+
+def normalize_modality(value: str | None) -> str | None:
+    """Map provider wording to a small, explainable source-context taxonomy."""
+
+    if value is None or not str(value).strip():
+        return None
+    key = re.sub(r"[^a-z]+", "_", str(value).casefold()).strip("_")
+    aliases = {
+        "asserted": "reported",
+        "actual": "reported",
+        "historical": "reported",
+        "estimate": "estimated",
+        "projection": "forecast",
+        "projected": "forecast",
+        "forecasted": "forecast",
+        "mandatory": "required",
+    }
+    return aliases.get(key, key)
+
+
 def parse_interval(text: str) -> dict[str, str | None]:
     """Return explicit effective/publication date hints without inventing dates."""
 

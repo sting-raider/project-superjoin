@@ -9,7 +9,7 @@ from typing import Any
 from .budget import BudgetExceeded, estimate_cost, reserve, settle
 from .config import settings
 from .db import db, utc_now
-from .normalization import compare_numeric
+from .normalization import compare_numeric, normalize_modality, normalize_period_label
 from .providers import ProviderError, available, input_hash, provider_identity, structured_chat
 from .security import untrusted_document_block
 
@@ -64,6 +64,7 @@ def assess_relationships(
             run_document_id = run["document_id"] if run else None
         rows = conn.execute(
             """SELECT c.*,ci.entity_id,ci.predicate_id,
+            ci.period AS resolved_period,ci.modality AS resolved_modality,
             e.canonical_name,p.key AS canonical_predicate
             FROM claims c JOIN documents d ON d.id=c.document_id
             LEFT JOIN claim_interpretations ci ON ci.claim_id=c.id
@@ -88,6 +89,8 @@ def assess_relationships(
         claim["source_predicate"] = claim["predicate"]
         claim["subject"] = claim["canonical_name"] or claim["subject"]
         claim["predicate"] = claim["canonical_predicate"] or claim["predicate"]
+        claim["period"] = claim["resolved_period"] or claim["period"]
+        claim["modality"] = claim["resolved_modality"] or claim["modality"]
         claims.append(claim)
     groups: dict[tuple[str, str], list[Any]] = {}
     for claim in claims:
@@ -303,6 +306,7 @@ def rebuild_workspace(
     with db() as conn:
         claims = conn.execute(
             """SELECT c.*,ci.entity_id,ci.predicate_id,
+            ci.period AS resolved_period,ci.modality AS resolved_modality,
             e.canonical_name,p.key AS canonical_predicate
             FROM claims c JOIN documents d ON d.id=c.document_id
             LEFT JOIN claim_interpretations ci ON ci.claim_id=c.id
@@ -321,16 +325,22 @@ def rebuild_workspace(
         for claim in claims:
             subject = claim["canonical_name"] or claim["subject"]
             predicate = claim["canonical_predicate"] or claim["predicate"]
+            period = claim["resolved_period"] or claim["period"]
+            modality = claim["resolved_modality"] or claim["modality"]
             key = (
                 str(claim["entity_id"] or subject).casefold(),
                 str(claim["predicate_id"] or predicate).casefold(),
-                str(claim["period"] or "").casefold(),
-                str(claim["modality"] or "").casefold(),
+                str(period or "").casefold(),
+                str(modality or "").casefold(),
                 str(claim["scope"] or "").casefold(),
                 str(claim["value_type"] or "").casefold(),
                 str(claim["unit"] or "").casefold(),
             )
             groups.setdefault(key, []).append(claim)
+            claim = dict(claim)
+            claim["period"] = period
+            claim["modality"] = modality
+            groups[key][-1] = claim
             identities[key] = (subject, predicate)
         active_fact_ids: set[str] = set()
         for key, members in groups.items():
@@ -641,11 +651,15 @@ def _visual_only_evidence(value: str | None) -> bool:
 
 
 def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]:
+    period_a = normalize_period_label(a["period"])
+    period_b = normalize_period_label(b["period"])
+    modality_a = normalize_modality(a["modality"])
+    modality_b = normalize_modality(b["modality"])
     dimensions = {
         "subject": "MATCH" if a["subject"].lower() == b["subject"].lower() else "DIFFERENT",
         "predicate": "MATCH" if a["predicate"].lower() == b["predicate"].lower() else "DIFFERENT",
-        "period": "MATCH" if a["period"] and a["period"] == b["period"] else "DIFFERENT",
-        "modality": "MATCH" if a["modality"] == b["modality"] else "DIFFERENT",
+        "period": "MATCH" if period_a and period_a == period_b else "DIFFERENT",
+        "modality": "MATCH" if modality_a == modality_b else "DIFFERENT",
         "value": "UNKNOWN",
     }
     if dimensions["subject"] != "MATCH" or dimensions["predicate"] != "MATCH":
@@ -656,10 +670,10 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
         dimensions["value"] = compare_numeric(a["normalized_value"], b["normalized_value"], precision_a, precision_b)
     elif a["normalized_value"] == b["normalized_value"]:
         dimensions["value"] = "equal"
-    if a["period"] != b["period"]:
+    if period_a != period_b:
         return "UNRELATED", "The claims apply to different periods.", dimensions, 0.93
     if dimensions["value"] in {"equal", "rounding-compatible"}:
         return "CORROBORATES", "Values are equivalent after deterministic normalization.", dimensions, 0.96
-    if a["modality"] != b["modality"]:
+    if modality_a != modality_b:
         return "RECONCILES", "The claims use different modalities or data vintages.", dimensions, 0.86
     return "CONTRADICTS", "Same subject, predicate, period, and modality with incompatible values.", dimensions, 0.84

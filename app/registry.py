@@ -12,6 +12,7 @@ from typing import Any
 from .budget import BudgetExceeded, estimate_cost, reserve, settle
 from .config import settings
 from .db import db, utc_now
+from .normalization import normalize_modality, normalize_period_label
 from .providers import (
     ProviderError,
     available,
@@ -224,13 +225,24 @@ def _register_workspace_claims(
     with db() as conn:
         rows = conn.execute(
             """SELECT c.id,c.subject,c.predicate,c.value_type,c.evidence_json,
-            c.period,c.modality
+            c.period,c.modality,ci.predicate AS interpretation_predicate,
+            ci.period AS interpretation_period,ci.modality AS interpretation_modality,
+            ci.entity_status,ci.predicate_status
             FROM claims c JOIN claim_interpretations ci ON ci.claim_id=c.id
               AND ci.version=(SELECT MAX(ci2.version) FROM claim_interpretations ci2 WHERE ci2.claim_id=c.id)
-            WHERE c.workspace_id=? AND c.extraction_status='accepted'
-              AND (ci.entity_status<>'resolved' OR ci.predicate_status<>'resolved')""",
+            WHERE c.workspace_id=? AND c.extraction_status='accepted'""",
             (workspace_id,),
         ).fetchall()
+        rows = [
+            row for row in rows
+            if row["entity_status"] != "resolved"
+            or row["predicate_status"] != "resolved"
+            or row["interpretation_predicate"] != conceptual_predicate(
+                row["predicate"], row["period"], row["modality"]
+            )
+            or row["interpretation_period"] != normalize_period_label(row["period"])
+            or row["interpretation_modality"] != normalize_modality(row["modality"])
+        ]
         entity_candidates = [
             dict(row)
             for row in conn.execute(
@@ -360,7 +372,7 @@ def _register_workspace_claims(
         with db() as conn:
             conn.execute(
                 """UPDATE claim_interpretations SET
-                entity_status=?,predicate_status=?,entity_id=?,predicate_id=?,predicate=?,
+                entity_status=?,predicate_status=?,entity_id=?,predicate_id=?,predicate=?,period=?,modality=?,
                 entity_relation=?,predicate_relation=?
                 WHERE claim_id=? AND version=(SELECT MAX(version) FROM claim_interpretations WHERE claim_id=?)""",
                 (
@@ -369,6 +381,8 @@ def _register_workspace_claims(
                     entity.get("id"),
                     predicate.get("id"),
                     predicate_source,
+                    normalize_period_label(row["period"]),
+                    normalize_modality(row["modality"]),
                     entity.get("relation"),
                     predicate.get("relation"),
                     row["id"],
