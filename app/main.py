@@ -20,8 +20,9 @@ from .config import settings
 from .db import db, init_db, row_to_dict, rows_to_dicts, utc_now
 from .knowledge import assess_relationships, rebuild_workspace, resolve_fact, set_document_archived
 from .pipeline import process_document
-from .providers import ProviderError, available, public_endpoint
+from .providers import ProviderError, available, probe, public_endpoint
 from .retrieval import create_embedding_space, embed_claim, search_claims
+from .runtime_settings import ProviderRoleUpdate, apply_provider_update, provider_presets
 
 
 def startup() -> None:
@@ -638,7 +639,51 @@ def settings_view() -> dict[str, Any]:
         "vision": {"model": settings.vision_model, "configured": available("vision"), "base_url": _public_endpoint(settings.vision_base_url), "key_configured": bool(settings.vision_api_key), "auth_header": settings.vision_auth_header, "auth_scheme": settings.vision_auth_scheme, "send_model": settings.vision_send_model, "chat_path": _public_endpoint(settings.vision_chat_path), "timeout_seconds": settings.vision_timeout_seconds, "max_output_tokens": settings.vision_max_output_tokens, "concurrency": settings.vision_concurrency, "structured_output_mode": settings.vision_structured_output_mode},
         "embeddings": {"model": settings.embedding_model, "configured": available("embedding"), "base_url": _public_endpoint(settings.embedding_base_url), "key_configured": bool(settings.embedding_api_key), "auth_header": settings.embedding_auth_header, "auth_scheme": settings.embedding_auth_scheme, "send_model": settings.embedding_send_model, "embedding_path": _public_endpoint(settings.embedding_path), "timeout_seconds": settings.embedding_timeout_seconds, "concurrency": settings.embedding_concurrency, "task_type": settings.embedding_task_type, "dimensions": settings.embedding_dimensions, "include_dimensions": settings.embedding_include_dimensions},
     }
-    return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": available(), "roles": roles, "configured_roles": {name: role["configured"] for name, role in roles.items()}, "embedding_dimensions": settings.embedding_dimensions, "provider_retry": {"attempts": settings.provider_retry_attempts, "backoff_seconds": settings.provider_retry_backoff_seconds}, "budget": budget_snapshot()}
+    return {
+        "project": "Project SuperJoin",
+        "demo_mode": settings.demo_mode,
+        "provider_configured": available(),
+        "roles": roles,
+        "configured_roles": {name: role["configured"] for name, role in roles.items()},
+        "embedding_dimensions": settings.embedding_dimensions,
+        "provider_retry": {
+            "attempts": settings.provider_retry_attempts,
+            "backoff_seconds": settings.provider_retry_backoff_seconds,
+        },
+        "parser": {
+            "backend": settings.parser_backend,
+            "local_ocr_enabled": settings.local_ocr_enabled,
+            "timeout_seconds": settings.parser_timeout_seconds,
+        },
+        "presets": provider_presets(),
+        "budget": budget_snapshot(),
+    }
+
+
+@app.post("/api/v1/settings/{role}")
+def update_provider_settings(role: str, update: ProviderRoleUpdate) -> dict[str, Any]:
+    with db() as conn:
+        active = conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE status IN ('queued','processing')"
+        ).fetchone()[0]
+    if active:
+        raise HTTPException(
+            409,
+            "Provider settings cannot change while an ingestion run is active",
+        )
+    try:
+        apply_provider_update(role, update)
+    except ProviderError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return settings_view()
+
+
+@app.post("/api/v1/settings/{role}/test")
+def test_provider_settings(role: str) -> dict[str, Any]:
+    try:
+        return probe(role)
+    except ProviderError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @app.post("/api/v1/demo/reset")

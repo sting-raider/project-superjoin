@@ -34,7 +34,7 @@ def test_role_endpoints_and_keys_are_independent(monkeypatch) -> None:
         settings,
         ai_base_url="",
         ai_api_key="",
-        extraction_base_url="http://extract.example/v1",
+        extraction_base_url="https://extract.example/v1",
         extraction_api_key="extract-key",
         extraction_model="qwen2.5-7b-instruct",
         extraction_max_output_tokens=77,
@@ -45,7 +45,7 @@ def test_role_endpoints_and_keys_are_independent(monkeypatch) -> None:
         vision_base_url="",
         vision_api_key="",
         vision_model="",
-        embedding_base_url="http://embed.example/v1",
+        embedding_base_url="https://embed.example/v1",
         embedding_api_key="embed-key",
         embedding_model="nomic-embed-text",
         embedding_dimensions=2,
@@ -73,11 +73,11 @@ def test_role_endpoints_and_keys_are_independent(monkeypatch) -> None:
     assert chat.data == {"claims": []}
     assert chat.model == configured.extraction_model
     assert vector.data["data"][0]["embedding"] == [3.0, 4.0]
-    assert calls[0][0] == "http://extract.example/v1/chat/completions"
+    assert calls[0][0] == "https://extract.example/v1/chat/completions"
     assert calls[0][1] == "Bearer extract-key"
     assert calls[0][2] == 13
     assert calls[0][3]["max_tokens"] == 77
-    assert calls[1][0] == "http://embed.example/v1/embeddings"
+    assert calls[1][0] == "https://embed.example/v1/embeddings"
     assert calls[1][1] == "Bearer embed-key"
     assert calls[1][2] == 17
     assert calls[1][3]["dimensions"] == 2
@@ -86,7 +86,7 @@ def test_role_endpoints_and_keys_are_independent(monkeypatch) -> None:
 def test_chat_result_exposes_output_limit_truncation(monkeypatch) -> None:
     configured = replace(
         settings,
-        extraction_base_url="http://extract.example/v1",
+        extraction_base_url="https://extract.example/v1",
         extraction_model="arbitrary-model",
     )
     monkeypatch.setattr(providers, "settings", configured)
@@ -114,7 +114,7 @@ def test_chat_result_exposes_output_limit_truncation(monkeypatch) -> None:
 def test_embedding_request_accepts_a_batch(monkeypatch) -> None:
     configured = replace(
         settings,
-        embedding_base_url="http://embed.example/v1",
+        embedding_base_url="https://embed.example/v1",
         embedding_model="arbitrary-embedder",
         embedding_dimensions=2,
     )
@@ -138,7 +138,7 @@ def test_embedding_request_accepts_a_batch(monkeypatch) -> None:
 def test_configured_extra_body_supports_arbitrary_compatible_fields(monkeypatch) -> None:
     configured = replace(
         settings,
-        extraction_base_url="http://provider.example/v1",
+        extraction_base_url="https://provider.example/v1",
         extraction_model="vendor/arbitrary-model",
         extraction_extra_body_json=json.dumps(
             {
@@ -166,7 +166,7 @@ def test_configured_extra_body_supports_arbitrary_compatible_fields(monkeypatch)
 def test_role_concurrency_is_global_across_callers(monkeypatch) -> None:
     configured = replace(
         settings,
-        extraction_base_url="http://extract.example/v1",
+        extraction_base_url="https://extract.example/v1",
         extraction_model="arbitrary-model",
         extraction_concurrency=2,
     )
@@ -200,7 +200,7 @@ def test_arbitrary_compatible_endpoint_supports_local_and_azure_style_auth(monke
         settings,
         ai_base_url="",
         ai_api_key="",
-        extraction_base_url="http://ollama.local/v1",
+        extraction_base_url="http://localhost:11434/v1",
         extraction_api_key="",
         extraction_model="llama3.1:8b",
         extraction_structured_output_mode="none",
@@ -227,7 +227,7 @@ def test_arbitrary_compatible_endpoint_supports_local_and_azure_style_auth(monke
     assert providers.available("vision") is True
     providers.vision_chat("system", "user", b"image")
 
-    assert calls[0][0] == "http://ollama.local/v1/chat/completions"
+    assert calls[0][0] == "http://localhost:11434/v1/chat/completions"
     assert "Authorization" not in calls[0][1]
     assert calls[0][2]["model"] == "llama3.1:8b"
     assert calls[1][0].endswith("api-version=2024-10-21")
@@ -235,7 +235,7 @@ def test_arbitrary_compatible_endpoint_supports_local_and_azure_style_auth(monke
     assert "model" not in calls[1][2]
 
 
-def test_provider_result_endpoint_redacts_url_credentials_and_queries(monkeypatch) -> None:
+def test_provider_rejects_cross_host_paths_before_sending_credentials(monkeypatch) -> None:
     configured = replace(
         settings,
         extraction_base_url="https://gateway.example/v1",
@@ -251,11 +251,8 @@ def test_provider_result_endpoint_redacts_url_credentials_and_queries(monkeypatc
         ),
     )
 
-    result = providers.structured_chat("extraction", "system", "user")
-
-    assert result.endpoint == "https://example.test/chat/completions"
-    assert "secret" not in str(result)
-    assert "hidden" not in str(result)
+    with pytest.raises(providers.ProviderError, match="another host"):
+        providers.structured_chat("extraction", "system", "user")
 
 
 def test_empty_role_configuration_does_not_enable_shared_provider(monkeypatch) -> None:
@@ -299,7 +296,7 @@ def test_provider_cache_identity_includes_endpoint_and_request_shape(monkeypatch
 def test_transient_provider_failure_uses_retry_after_without_silent_fallback(monkeypatch) -> None:
     configured = replace(
         settings,
-        extraction_base_url="http://retry.example/v1",
+        extraction_base_url="https://retry.example/v1",
         extraction_api_key="retry-key",
         extraction_model="custom-retry-model",
         provider_retry_attempts=2,
@@ -337,7 +334,7 @@ def test_transient_provider_failure_uses_retry_after_without_silent_fallback(mon
 def test_exhausted_transient_provider_error_exposes_attempt_count(monkeypatch) -> None:
     configured = replace(
         settings,
-        extraction_base_url="http://retry.example/v1",
+        extraction_base_url="https://retry.example/v1",
         extraction_api_key="retry-key",
         extraction_model="custom-retry-model",
         provider_retry_attempts=3,
@@ -364,7 +361,7 @@ def test_exhausted_transient_provider_error_exposes_attempt_count(monkeypatch) -
 def test_transient_network_failure_uses_bounded_retry_policy(monkeypatch) -> None:
     configured = replace(
         settings,
-        extraction_base_url="http://network-retry.example/v1",
+        extraction_base_url="https://network-retry.example/v1",
         extraction_api_key="retry-key",
         extraction_model="arbitrary-network-model",
         provider_retry_attempts=2,
@@ -393,7 +390,7 @@ def test_transient_network_failure_uses_bounded_retry_policy(monkeypatch) -> Non
 def test_incomplete_http_response_uses_bounded_retry_policy(monkeypatch) -> None:
     configured = replace(
         settings,
-        extraction_base_url="http://partial-response.example/v1",
+        extraction_base_url="https://partial-response.example/v1",
         extraction_api_key="retry-key",
         extraction_model="arbitrary-model",
         provider_retry_attempts=2,

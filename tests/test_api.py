@@ -8,6 +8,7 @@ os.environ["DEMO_MODE"] = "true"
 
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.db import db, utc_now
 from app.main import _public_endpoint, app
 
@@ -165,6 +166,40 @@ def test_settings_exposes_nonsecret_independent_role_contract() -> None:
         assert payload["roles"]["vision"]["send_model"] is True
         assert payload["provider_retry"]["attempts"] >= 1
         assert payload["configured_roles"] == {"extraction": False, "reasoning": False, "vision": False, "embeddings": False}
+
+
+def test_runtime_settings_update_never_returns_or_persists_api_key() -> None:
+    original = (
+        settings.extraction_base_url,
+        settings.extraction_api_key,
+        settings.extraction_model,
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/settings/extraction",
+                json={
+                    "base_url": "http://localhost:11434/v1",
+                    "api_key": "memory-only-secret",
+                    "model": "arbitrary/local-model",
+                },
+            )
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["roles"]["extraction"]["key_configured"] is True
+            assert "memory-only-secret" not in response.text
+            with db() as conn:
+                serialized = " ".join(
+                    str(row[0])
+                    for row in conn.execute(
+                        "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL"
+                    ).fetchall()
+                )
+            assert "memory-only-secret" not in serialized
+    finally:
+        object.__setattr__(settings, "extraction_base_url", original[0])
+        object.__setattr__(settings, "extraction_api_key", original[1])
+        object.__setattr__(settings, "extraction_model", original[2])
 
 
 def test_document_archive_and_reactivate_are_auditable() -> None:

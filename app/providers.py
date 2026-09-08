@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import http.client
+import ipaddress
 import json
 import random
 import threading
@@ -194,9 +195,56 @@ def available(role: str | None = None) -> bool:
 
 
 def _endpoint(base_url: str, path: str) -> str:
+    validate_provider_base_url(base_url)
     if path.startswith(("http://", "https://")):
+        base = urlsplit(base_url)
+        target = urlsplit(path)
+        if (base.scheme, base.hostname, base.port) != (
+            target.scheme,
+            target.hostname,
+            target.port,
+        ):
+            raise ProviderError("Provider path cannot send credentials to another host")
+        if target.username or target.password:
+            raise ProviderError("Provider URL credentials are not allowed")
         return path
+    if not path.startswith("/") or path.startswith("//"):
+        raise ProviderError("Provider path must be an origin-relative path")
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+
+def validate_provider_base_url(value: str) -> None:
+    """Enforce the provider network boundary for env and runtime settings."""
+
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise ProviderError(f"Invalid provider base URL: {exc}") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ProviderError("Provider base URL must be an absolute HTTP(S) URL")
+    if parsed.username or parsed.password:
+        raise ProviderError("Provider URL credentials are not allowed")
+    if parsed.query or parsed.fragment:
+        raise ProviderError("Provider base URL cannot contain a query or fragment")
+    host = parsed.hostname.casefold()
+    local = host in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme == "http" and not local:
+        raise ProviderError("Remote provider endpoints must use HTTPS")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address and not local and (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+    ):
+        raise ProviderError("Private or reserved provider IP addresses are not allowed")
+    if port is not None and not (1 <= port <= 65535):  # pragma: no cover - urlsplit rejects
+        raise ProviderError("Provider port is invalid")
 
 
 def _headers(config: dict[str, Any]) -> dict[str, str]:
@@ -409,6 +457,57 @@ def embed(text: str | list[str], model: str | None = None) -> ProviderResult:
         payload["dimensions"] = settings.embedding_dimensions
     _merge_extra_body(payload, config, "embedding")
     return _post("embedding", payload, chosen, "embedding")
+
+
+def probe(role: str) -> dict[str, Any]:
+    """Make a minimal capability call for one configured provider role."""
+
+    canonical = _canonical_role(role)
+    if canonical not in _ROLE_FIELDS:
+        raise ProviderError(f"Unknown provider role: {role}")
+    if not available(canonical):
+        raise ProviderError(f"{canonical} provider is not configured")
+    if canonical == "embedding":
+        result = embed("Project SuperJoin connection test")
+        rows = result.data.get("data") if isinstance(result.data, dict) else None
+        vector = rows[0].get("embedding") if rows and isinstance(rows[0], dict) else None
+        if not isinstance(vector, list) or not vector:
+            raise ProviderError("Embedding provider returned no vector")
+        if len(vector) != settings.embedding_dimensions:
+            raise ProviderError(
+                "Embedding dimension mismatch: "
+                f"configured {settings.embedding_dimensions}, provider returned {len(vector)}"
+            )
+        capability = {"embedding_dimensions": len(vector)}
+    elif canonical == "vision":
+        # Valid transparent 1x1 PNG; the endpoint must accept image content.
+        pixel = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        result = vision_chat(
+            "Return a compact JSON object.",
+            "Describe whether an image was received using JSON only.",
+            pixel,
+            max_output_tokens=32,
+        )
+        capability = {"vision_input": True}
+    else:
+        result = structured_chat(
+            canonical,
+            "Return a compact JSON object and no prose.",
+            '{"connection_test":true}',
+            max_output_tokens=32,
+        )
+        capability = {"chat_completion": True}
+    return {
+        "role": "embeddings" if canonical == "embedding" else canonical,
+        "status": "connected",
+        "model": result.model,
+        "endpoint": result.endpoint,
+        "latency_ms": result.latency_ms,
+        "attempts": result.attempts,
+        "capability": capability,
+    }
 
 
 def input_hash(*parts: str) -> str:
