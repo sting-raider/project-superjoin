@@ -13,7 +13,7 @@ button, input, select, textarea { font: inherit; } button, label[for], select { 
 button:disabled { cursor: wait; opacity: .55; }
 
 .app-shell { min-height: 100vh; border-top: 6px solid var(--green); }
-.masthead { height: 90px; padding: 0 clamp(20px,4vw,64px); display: grid; grid-template-columns: 1fr minmax(230px,.7fr) auto; align-items: center; gap: 34px; background: var(--white); border-bottom: 1px solid var(--ink); }
+.masthead { height: 90px; padding: 0 clamp(20px,4vw,64px); display: grid; grid-template-columns: 1fr minmax(360px,.9fr) auto; align-items: center; gap: 28px; background: var(--white); border-bottom: 1px solid var(--ink); }
 .brand { display: flex; align-items: center; gap: 13px; border: 0; padding: 0; background: transparent; color: var(--ink); text-align: left; }
 .brand-mark { width: 40px; height: 40px; display: grid; place-items: center; color: var(--forest); background: var(--green); font: 800 13px var(--mono); letter-spacing: -1px; transform: rotate(-3deg); }
 .brand strong { display: block; font: 700 24px/1 var(--condensed); letter-spacing: -.7px; }
@@ -62,7 +62,7 @@ button:disabled { cursor: wait; opacity: .55; }
 .table-card { overflow: auto; border: 1px solid var(--ink); background: var(--white); }.table-card table { width: 100%; min-width: 790px; border-collapse: collapse; }.table-card th { padding: 12px 14px; border-bottom: 1px solid var(--ink); background: var(--forest); color: #bcd1c5; text-align: left; font: 9px var(--mono); letter-spacing: 1px; }.table-card td { padding: 17px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }.table-card tbody tr { cursor: pointer; }.table-card tbody tr:hover { background: #eef6ef; }.table-card tbody tr:last-child td { border-bottom: 0; }.predicate { text-transform: capitalize; }.value-cell { color: var(--green-dark); font: 700 11px var(--mono)!important; }.muted { color: var(--muted); }.source-count { color: var(--green-dark); }.empty { padding: 48px 24px; color: var(--muted); text-align: center; }
 .badge { display: inline-block; width: max-content; padding: 4px 7px; border: 1px solid currentColor; font: 8px var(--mono); letter-spacing: .55px; text-transform: uppercase; white-space: nowrap; }.badge-good { color: var(--green-dark); background: #ecf9ef; }.badge-bad { color: var(--red); background: #fff3ef; }.badge-warn { color: var(--amber); background: #fff8e7; }.badge-neutral { color: var(--muted); background: #f1f3f0; }
 
-.document-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; border: 1px solid var(--ink); background: var(--ink); }
+.document-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,460px),1fr)); gap: 1px; border: 1px solid var(--ink); background: var(--ink); }
 .document-card { min-width: 0; background: var(--white); color: var(--ink); }
 .document-card.selected { box-shadow: inset 5px 0 var(--green); }
 .document-card.archived { background: #f0f2ee; color: #526159; }
