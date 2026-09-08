@@ -9,6 +9,7 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
@@ -42,6 +43,27 @@ def _workspace_or_default(workspace_id: str | None) -> str:
     if not row:
         raise HTTPException(404, "No workspace is available")
     return str(row["id"])
+
+
+def _public_endpoint(value: str) -> str:
+    """Expose endpoint identity without returning URL credentials or queries."""
+
+    raw = str(value or "")
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return raw.split("?", 1)[0].split("#", 1)[0]
+    if not parsed.scheme or not parsed.netloc:
+        return raw.split("?", 1)[0].split("#", 1)[0]
+    hostname = parsed.hostname or ""
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    netloc = hostname
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
 
 
 @app.get("/api/v1/health")
@@ -553,10 +575,10 @@ def reviews(workspace_id: str | None = None, include_stale: bool = True) -> dict
 @app.get("/api/v1/settings")
 def settings_view() -> dict[str, Any]:
     roles = {
-        "extraction": {"model": settings.extraction_model, "configured": available("extraction"), "base_url": settings.extraction_base_url, "key_configured": bool(settings.extraction_api_key), "auth_header": settings.extraction_auth_header, "auth_scheme": settings.extraction_auth_scheme, "send_model": settings.extraction_send_model, "chat_path": settings.extraction_chat_path, "timeout_seconds": settings.extraction_timeout_seconds, "max_output_tokens": settings.extraction_max_output_tokens, "concurrency": settings.extraction_concurrency, "structured_output_mode": settings.extraction_structured_output_mode},
-        "reasoning": {"model": settings.reasoning_model, "configured": available("reasoning"), "base_url": settings.reasoning_base_url, "key_configured": bool(settings.reasoning_api_key), "auth_header": settings.reasoning_auth_header, "auth_scheme": settings.reasoning_auth_scheme, "send_model": settings.reasoning_send_model, "chat_path": settings.reasoning_chat_path, "timeout_seconds": settings.reasoning_timeout_seconds, "max_output_tokens": settings.reasoning_max_output_tokens, "concurrency": settings.reasoning_concurrency, "structured_output_mode": settings.reasoning_structured_output_mode},
-        "vision": {"model": settings.vision_model, "configured": available("vision"), "base_url": settings.vision_base_url, "key_configured": bool(settings.vision_api_key), "auth_header": settings.vision_auth_header, "auth_scheme": settings.vision_auth_scheme, "send_model": settings.vision_send_model, "chat_path": settings.vision_chat_path, "timeout_seconds": settings.vision_timeout_seconds, "max_output_tokens": settings.vision_max_output_tokens, "concurrency": settings.vision_concurrency, "structured_output_mode": settings.vision_structured_output_mode},
-        "embeddings": {"model": settings.embedding_model, "configured": available("embedding"), "base_url": settings.embedding_base_url, "key_configured": bool(settings.embedding_api_key), "auth_header": settings.embedding_auth_header, "auth_scheme": settings.embedding_auth_scheme, "send_model": settings.embedding_send_model, "embedding_path": settings.embedding_path, "timeout_seconds": settings.embedding_timeout_seconds, "concurrency": settings.embedding_concurrency, "task_type": settings.embedding_task_type, "dimensions": settings.embedding_dimensions, "include_dimensions": settings.embedding_include_dimensions},
+        "extraction": {"model": settings.extraction_model, "configured": available("extraction"), "base_url": _public_endpoint(settings.extraction_base_url), "key_configured": bool(settings.extraction_api_key), "auth_header": settings.extraction_auth_header, "auth_scheme": settings.extraction_auth_scheme, "send_model": settings.extraction_send_model, "chat_path": settings.extraction_chat_path, "timeout_seconds": settings.extraction_timeout_seconds, "max_output_tokens": settings.extraction_max_output_tokens, "concurrency": settings.extraction_concurrency, "structured_output_mode": settings.extraction_structured_output_mode},
+        "reasoning": {"model": settings.reasoning_model, "configured": available("reasoning"), "base_url": _public_endpoint(settings.reasoning_base_url), "key_configured": bool(settings.reasoning_api_key), "auth_header": settings.reasoning_auth_header, "auth_scheme": settings.reasoning_auth_scheme, "send_model": settings.reasoning_send_model, "chat_path": settings.reasoning_chat_path, "timeout_seconds": settings.reasoning_timeout_seconds, "max_output_tokens": settings.reasoning_max_output_tokens, "concurrency": settings.reasoning_concurrency, "structured_output_mode": settings.reasoning_structured_output_mode},
+        "vision": {"model": settings.vision_model, "configured": available("vision"), "base_url": _public_endpoint(settings.vision_base_url), "key_configured": bool(settings.vision_api_key), "auth_header": settings.vision_auth_header, "auth_scheme": settings.vision_auth_scheme, "send_model": settings.vision_send_model, "chat_path": settings.vision_chat_path, "timeout_seconds": settings.vision_timeout_seconds, "max_output_tokens": settings.vision_max_output_tokens, "concurrency": settings.vision_concurrency, "structured_output_mode": settings.vision_structured_output_mode},
+        "embeddings": {"model": settings.embedding_model, "configured": available("embedding"), "base_url": _public_endpoint(settings.embedding_base_url), "key_configured": bool(settings.embedding_api_key), "auth_header": settings.embedding_auth_header, "auth_scheme": settings.embedding_auth_scheme, "send_model": settings.embedding_send_model, "embedding_path": settings.embedding_path, "timeout_seconds": settings.embedding_timeout_seconds, "concurrency": settings.embedding_concurrency, "task_type": settings.embedding_task_type, "dimensions": settings.embedding_dimensions, "include_dimensions": settings.embedding_include_dimensions},
     }
     return {"project": "Project SuperJoin", "demo_mode": settings.demo_mode, "provider_configured": available(), "roles": roles, "configured_roles": {name: role["configured"] for name, role in roles.items()}, "embedding_dimensions": settings.embedding_dimensions, "provider_retry": {"attempts": settings.provider_retry_attempts, "backoff_seconds": settings.provider_retry_backoff_seconds}, "budget": budget_snapshot()}
 
