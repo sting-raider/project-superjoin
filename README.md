@@ -78,7 +78,7 @@ The project owner will add the final live-product walkthrough link here after
 recording it. The repository contains no preloaded workspace, source, fact,
 relationship, provider response, or video asset.
 
-## Approach
+## Approach and Trade-offs
 
 LiteParse 2.14.4 is the primary local parser after a measured 169-page
 comparison. It extracts native text, classified blocks, tables, word geometry,
@@ -111,6 +111,18 @@ facts never silently become executable values.
 Starter-dataset entities, values, pages, IDs, predicates, and expected
 relationships are isolated to evaluation metadata. Production modules are
 checked for leakage and remain functional when starter artifacts are absent.
+
+The main engineering trade-offs are deliberate:
+
+| Decision | Benefit | Trade-off |
+| --- | --- | --- |
+| SQLite WAL, FTS5, and one application container | One-command evaluator setup, transactional publication, and a portable audit record | Best suited to evaluator and single-team workloads rather than distributed, high-write deployments |
+| Immutable claims with derived fact families | Exact provenance, reproducible revisions, and safe re-canonicalization | More stored records and more domain modeling than a flat extraction table |
+| Deterministic normalization before semantic reasoning | Repeatable financial values, periods, units, and lower provider cost | Novel or ambiguous language can remain unresolved for semantic resolution or review |
+| Configurable OpenAI-compatible role providers | No model allowlist and independent extraction, reasoning, vision, and embedding choices | Endpoint capability and output quality vary, so configuration errors remain explicit |
+| LiteParse with selective OCR and vision fallback | Fast native-PDF processing while retaining a path for difficult pages | Scans, charts, and complex layouts cost more and may still be quarantined |
+| Bounded hybrid retrieval and relationship candidates | Predictable latency and avoids quadratic all-pair reasoning | Candidate limits can miss weakly expressed or distant relationships |
+| Committed revisions behind the Trust Gate | Downstream agents never consume provisional or contested values silently | Newly extracted information is unavailable to strict consumers until publication completes |
 
 ## Limitations and Next Steps
 
