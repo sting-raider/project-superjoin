@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import shutil
 from pathlib import Path
 
@@ -20,6 +21,25 @@ CAPTION_STYLE = """
   background: rgba(6, 35, 25, .94); color: #dff7e5;
   font: 600 15px/1.35 system-ui, sans-serif; text-align: center;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+"""
+
+
+REDACTION_STYLE = """
+  .workspace-picker select { color: transparent !important; text-shadow: none !important; }
+  .topbar h1 { color: transparent !important; position: relative; }
+  .topbar h1::after { content: 'Demo workspace'; color: var(--ink); position: absolute; left: 0; top: 0; }
+  .document-info, .document-info *, .case-card h3, .case-card p, .case-card .badge,
+  .case-card .case-footer, .case-card .case-footer *, .case-row, .case-row *,
+  .table-card tbody, .table-card tbody *, .run-row strong, .run-row small,
+  .run-row strong *, .run-row small *, .trust-form input, .gate-result,
+  .gate-result * { color: transparent !important; text-shadow: none !important; }
+  .document-info, .case-card h3, .case-card p, .case-card .case-footer, .case-row,
+  .table-card tbody, .run-row strong, .run-row small, .gate-result,
+  .inspector > :not(.inspector-top) { filter: blur(9px); }
+  .inspector > :not(.inspector-top) * { color: transparent !important; text-shadow: none !important; }
+  .document-source-link, .page-link { color: #0b9c47 !important; filter: none !important; }
+  .page-list, .evidence-block, .relationship-hero, .dimension-list, .failure-box { filter: blur(10px); }
+  .trust-form input { caret-color: transparent !important; }
 """
 
 
@@ -35,7 +55,19 @@ STEPS = (
 )
 
 
-async def record(url: str, output: Path) -> Path:
+def redaction_init_script() -> str:
+    """Return the browser init script used by the rights-safe capture."""
+
+    return (
+        "(() => { const style = document.createElement('style'); "
+        f"style.textContent = {json.dumps(REDACTION_STYLE)}; "
+        "const install = () => (document.head || document.documentElement).appendChild(style); "
+        "if (document.head || document.documentElement) install(); "
+        "else document.addEventListener('DOMContentLoaded', install, { once: true }); })();"
+    )
+
+
+async def record(url: str, output: Path, redact_source: bool = False) -> Path:
     try:
         from playwright.async_api import async_playwright
     except ImportError as exc:  # pragma: no cover - optional local recording tool
@@ -56,6 +88,8 @@ async def record(url: str, output: Path) -> Path:
             record_video_dir=str(staging),
             record_video_size={"width": 1440, "height": 900},
         )
+        if redact_source:
+            await context.add_init_script(script=redaction_init_script())
         page = await context.new_page()
         await page.goto(url, wait_until="networkidle")
         await page.wait_for_selector("text=Project SuperJoin")
@@ -129,8 +163,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:8080", help="Running Project SuperJoin URL")
     parser.add_argument("--output", type=Path, required=True, help="Output WebM path outside the repository")
+    parser.add_argument(
+        "--redact-source",
+        action="store_true",
+        help="Mask source-derived text and values for a rights-safe public walkthrough",
+    )
     args = parser.parse_args()
-    result = asyncio.run(record(args.url, args.output))
+    result = asyncio.run(record(args.url, args.output, args.redact_source))
     print(result)
 
 

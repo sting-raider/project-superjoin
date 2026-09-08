@@ -43,5 +43,17 @@ python scripts/check_video.py "$env:TEMP\project-superjoin-demo.mp4"
 The recorder uses only the local application, labels the recorded snapshot as
 offline replay, and leaves the source-PDF links untouched. Keep the output
 outside the repository until its visible evidence is cleared for publication.
-The current local capture measured 29.6 seconds at 1440x900 and passed the
-video preflight; it is not a public release asset.
+For a rights-safe public walkthrough when source-specific redistribution is not
+cleared, add `--redact-source` to mask source names, values, evidence text, and
+provider outputs before the first page paint:
+
+```powershell
+python scripts/record_demo_video.py --redact-source --output "$env:TEMP\project-superjoin-public.webm"
+ffmpeg -y -i "$env:TEMP\project-superjoin-public.webm" -c:v libx264 -pix_fmt yuv420p "$env:TEMP\project-superjoin-public.mp4"
+python scripts/check_video.py "$env:TEMP\project-superjoin-public.mp4"
+```
+
+The current local redacted capture measured 29.6 seconds at 1440x900 and
+passed the video preflight. A public release must link this redacted output
+explicitly; the full source-bearing capture and source PDFs remain local until
+their permissions are recorded in [`DATASET_REDISTRIBUTION.md`](DATASET_REDISTRIBUTION.md).
