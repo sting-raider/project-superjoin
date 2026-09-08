@@ -22,7 +22,13 @@ from .knowledge import assess_relationships, rebuild_workspace, resolve_fact, se
 from .pipeline import process_document
 from .providers import ProviderError, available, probe, public_endpoint
 from .retrieval import create_embedding_space, embed_claim, search_claims
-from .runtime_settings import ProviderRoleUpdate, apply_provider_update, provider_presets
+from .runtime_settings import (
+    ProviderConnectionCopy,
+    ProviderRoleUpdate,
+    apply_provider_update,
+    copy_provider_connection,
+    provider_presets,
+)
 
 
 def startup() -> None:
@@ -732,6 +738,24 @@ def update_provider_settings(role: str, update: ProviderRoleUpdate) -> dict[str,
         apply_provider_update(role, update)
     except ProviderError as exc:
         raise HTTPException(422, str(exc)) from exc
+    return settings_view()
+
+
+@app.post("/api/v1/settings/actions/copy-provider")
+def copy_provider_settings(request: ProviderConnectionCopy) -> dict[str, Any]:
+    with db() as conn:
+        active = conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE status IN ('queued','processing')"
+        ).fetchone()[0]
+    if active:
+        raise HTTPException(
+            409,
+            "Provider settings cannot change while an ingestion run is active",
+        )
+    try:
+        copy_provider_connection(request)
+    except ProviderError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return settings_view()
 
 

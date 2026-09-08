@@ -640,6 +640,9 @@ The Settings UI is a nonsecret capability inspector and runtime editor. It
 shows and updates each role's endpoint, model name, request path, auth-header
 name, timeouts, output/dimension metadata, concurrency, and whether a key is
 present. Submitted keys remain process-memory-only and are never returned.
+An explicit **Use this provider for…** action copies endpoint/authentication to
+selected compatible roles while preserving each target's model and
+capability-specific route settings unless the user chooses to copy the model.
 There is no provider allowlist or provider-specific discovery branch; arbitrary
 compatible services remain usable without a saved profile.
 

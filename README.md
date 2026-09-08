@@ -27,6 +27,9 @@ base URL, API key, model, request path, timeout, concurrency, token limit, and
 embedding dimensions. Configure them in `.env` or at runtime in **Configure**.
 Runtime keys stay in process memory, are never returned by the API, and
 disappear on restart. The US$20 cumulative budget ledger remains persistent.
+The **Use this provider for…** action can reuse one endpoint and its in-memory
+authentication across explicitly selected compatible roles while preserving
+each target role's model, request path, limits, and capability options.
 
 The adapter accepts arbitrary OpenAI-compatible endpoints and model names. It
 has no provider or model allowlist. OpenAI, Azure OpenAI, OpenRouter, Together,

@@ -77,6 +77,31 @@ class ProviderRoleUpdate(BaseModel):
         return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
 
 
+class ProviderConnectionCopy(BaseModel):
+    """Copy one provider connection while retaining target-role capabilities."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_role: str
+    target_roles: list[str] = Field(min_length=1, max_length=3)
+    copy_model: bool = False
+
+    @field_validator("source_role")
+    @classmethod
+    def validate_source_role(cls, value: str) -> str:
+        if value not in {"extraction", "reasoning", "vision", "embeddings"}:
+            raise ValueError("source_role must name a provider role")
+        return value
+
+    @field_validator("target_roles")
+    @classmethod
+    def validate_target_roles(cls, values: list[str]) -> list[str]:
+        allowed = {"extraction", "reasoning", "vision", "embeddings"}
+        if len(set(values)) != len(values) or any(value not in allowed for value in values):
+            raise ValueError("target_roles must contain unique provider roles")
+        return values
+
+
 _ROLE_ATTRIBUTES: dict[str, dict[str, str]] = {
     "extraction": {
         "base_url": "extraction_base_url",
@@ -165,6 +190,34 @@ def apply_provider_update(role: str, update: ProviderRoleUpdate) -> None:
             )
         elif update.clear_api_key:
             object.__setattr__(settings, attributes["api_key"], "")
+
+
+def copy_provider_connection(request: ProviderConnectionCopy) -> None:
+    """Bind selected roles to the same endpoint/auth without merging role settings."""
+
+    if request.source_role in request.target_roles:
+        raise ProviderError("The source role cannot also be a target role")
+    source = _ROLE_ATTRIBUTES[request.source_role]
+    base_url = str(getattr(settings, source["base_url"]) or "").strip().rstrip("/")
+    if not base_url:
+        raise ProviderError("The source role has no provider endpoint to copy")
+    validate_provider_base_url(base_url)
+    connection_fields = ("base_url", "api_key", "auth_header", "auth_scheme", "send_model")
+    with _update_lock:
+        for role in request.target_roles:
+            target = _ROLE_ATTRIBUTES[role]
+            for field_name in connection_fields:
+                object.__setattr__(
+                    settings,
+                    target[field_name],
+                    getattr(settings, source[field_name]),
+                )
+            if request.copy_model:
+                object.__setattr__(
+                    settings,
+                    target["model"],
+                    getattr(settings, source["model"]),
+                )
 
 
 def provider_presets() -> list[dict[str, Any]]:
