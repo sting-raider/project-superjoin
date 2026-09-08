@@ -134,3 +134,37 @@ def test_run_model_calls_surface_nonsecret_telemetry(tmp_path: Path) -> None:
         assert "api_key" not in response.text
     finally:
         object.__setattr__(settings, "database_path", original_db)
+
+
+def test_fact_search_reports_total_statuses_and_pages_server_side(tmp_path: Path) -> None:
+    original_db = settings.database_path
+    object.__setattr__(settings, "database_path", tmp_path / "facts.sqlite3")
+    try:
+        with TestClient(app) as client:
+            workspace_id = client.post("/api/v1/workspaces", json={"name": "Search Desk"}).json()["id"]
+            now = utc_now()
+            with db() as conn:
+                for index, status in enumerate(("SUPPORTED", "CONTESTED", "SUPPORTED")):
+                    conn.execute(
+                        """INSERT INTO facts
+                        (id,workspace_id,subject,predicate,normalized_value,display_value,
+                        value_type,status,reason,evidence_json,updated_at)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            f"fact-{index}", workspace_id, f"Northstar {index}",
+                            "annual_recurring_revenue", str(index), f"${index}m", "money",
+                            status, "Grounded test fact", "[]", now,
+                        ),
+                    )
+            response = client.get(
+                "/api/v1/facts",
+                params={"workspace_id": workspace_id, "q": "Northstar", "status": "SUPPORTED", "limit": 1, "offset": 1},
+            )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] == 1
+        assert payload["total"] == 2
+        assert payload["offset"] == 1
+        assert payload["statuses"] == ["CONTESTED", "SUPPORTED"]
+    finally:
+        object.__setattr__(settings, "database_path", original_db)
