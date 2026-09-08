@@ -259,6 +259,27 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   deterministic relationship comparison. A live SQLite regression covers the
   crore/million rounding case, aggregates both evidence records through the
   Trust Gate, and keeps unqualified 6.4%/6.5% values distinct.
+- The September 9 product-correctness pass reproduced the live three-document
+  workspace failure at 289 grounded claims, 281 active fact families, and zero
+  relationships. The registry already contained cross-document lanes, but raw
+  `FY24`/`FY2024` labels and provider modality synonyms split the comparator;
+  a table value also supplied `INR crore` separately from `8,142`, so the old
+  scalar normalization omitted the scale. Generic period/modality
+  canonicalization and raw-value-plus-unit normalization corrected both causes.
+  Republishing derived interpretations from the same immutable claims produced
+  278 active fact families and one real cross-document `CORROBORATES`
+  relationship between the annual report and earnings presentation, with
+  rounding-compatible dimensions. Same-document pairs are excluded from
+  evidence relationships to prevent repeated table rows and multi-valued
+  predicates from becoming false corroborations or conflicts. No starter name,
+  value, page, or claim identifier entered production logic.
+- Fact search is now server-side, status-aware, debounced, paginated, and reports
+  the complete matching count. Fact inspection follows published memberships
+  to readable document/page anchors. Relationship and Knowledge Diff payloads
+  carry real source/run identifiers, open controls now drill into real records,
+  the Review Queue is limited to review-needed states with audit-safe revocation,
+  Trust Gate begins from a canonical fact selector, and expanded run telemetry
+  polls current call and stage counters.
 - When a configured extraction provider is present, the bounded model lane now
   receives page text even when deterministic regex discovery finds no claims;
   model evidence still has to match supplied source text before publication.
