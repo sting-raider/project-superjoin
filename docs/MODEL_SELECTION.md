@@ -25,8 +25,9 @@ defaults or an allowlist:
 With no credentials the harness writes an explicit `skipped` report and makes
 no network request. It is incorrect to call those candidates benchmarked
 until the same development fixture has live results for quality, grounding,
-latency, dimensionality, and cost. The runtime still works in recorded demo
-mode through deterministic extraction and lexical retrieval. Any model string
+latency, dimensionality, and cost. Deterministic parsing and lexical retrieval
+remain local, while arbitrary-PDF semantic extraction requires a configured
+compatible endpoint. Any model string
 accepted by the configured endpoint is valid; compatibility failures are
 recorded as provider errors rather than converted into a hidden fallback.
 Transient 429/5xx and connection/timeout failures use bounded, configurable
@@ -82,8 +83,8 @@ and MRR 0.5771. The configured 768-dimensional hint is therefore disabled for
 this endpoint (`EMBEDDING_INCLUDE_DIMENSIONS=false`) and the embedding space
 records 2048 dimensions. A comparison alias returned HTTP 410 end-of-life for
 all eight requests, so it is rejected on endpoint compatibility before any
-quality comparison. The no-key demo keeps lexical retrieval available when no
-embedding role is configured.
+quality comparison. Lexical retrieval remains available when no embedding role
+is configured.
 
 The full result is `evals/reports/embedding-model-selection-nim.json`; it
 contains only aggregate telemetry, dimensions, errors, and retrieval metrics,

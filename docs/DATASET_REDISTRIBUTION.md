@@ -62,9 +62,10 @@ release containing source or derivative material must update this audit with
 the exact permission basis, checked date, hashes, attribution, and an
 allowlist review.
 
-Recorded demo claims are limited to the compact, source-linked evidence needed
-for the assignment cases. They are marked as recorded demo data in the UI and
-must not be represented as a redistribution of the underlying publications.
+Starter-derived gold labels and evaluation reports remain isolated under
+`evals/` and `datasets/`; production code does not import them. No starter
+source, derivative evidence snapshot, or preloaded fact database is shipped in
+the runtime.
 
 ## Public redacted walkthrough
 
@@ -75,8 +76,10 @@ recorder's `--redact-source` mode:
 
 The capture was reviewed frame-by-frame after recording. Source-derived names,
 values, evidence text, and provider outputs are masked before the first page
-paint; only generic interface labels, captions, and the no-key recorded-mode
-workflow remain visible. The asset passed `scripts/check_video.py`, returned
+paint; only generic interface labels and captions remain visible. This asset
+predates the live-only runtime and is retained solely as historical release
+evidence; it is not the current product walkthrough. The asset passed
+`scripts/check_video.py`, returned
 HTTP 200 from the release URL, and has SHA-256
 `c671ea13598224922c8803cc0dadeff615f43429a6b0a2da1d435e20be0ec229`.
 This release does not clear or redistribute the original PDFs or copied source

@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: implementation is continuing under the approved plan. The production-generalization correction, provider-neutral transport, and measured live-latency correction are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and live NVIDIA extraction/selection evidence is recorded. A rights-safe redacted walkthrough is published as a release asset; source clearances for source-bearing artifacts remain external inputs.
+Status: implementation is continuing under the approved plan. The production-generalization correction, provider-neutral transport, measured live-latency correction, LiteParse adoption, live-only empty start, editorial UI, and workspace/source controls are implemented. Benchmark outcomes, runtime evidence, and justified simplifications are recorded here. Starter rights remain external to the runtime; the application ships no preloaded claims, facts, sources, cases, or recorded model responses.
 
 ## 1. Outcome and governing decisions
 
@@ -18,7 +18,7 @@ cd project-superjoin
 docker compose up --build
 ~~~
 
-Open **http://localhost:8080**. No environment file or API key is required for Demo Mode.
+Open **http://localhost:8080**. A fresh database shows **No workspaces yet**. Create a workspace and configure a compatible provider before processing arbitrary PDFs.
 
 The following decisions are fixed:
 
@@ -29,13 +29,15 @@ The following decisions are fixed:
 - Support independently configurable OpenAI-compatible endpoints for extraction, reasoning, vision, and embeddings.
 - Include a tested default configuration, stored as configuration rather than provider-specific domain logic.
 - Enforce a **US$20 cumulative implementation/evaluation API budget**, including retries and capability probes.
-- Include an interactive no-key demo using genuine recorded outputs, clearly labeled as replay.
+- Ship a live-only runtime with no preloaded or recorded data path. Empty start, workspace creation, source upload/removal/restoration, processing, and persistence are acceptance requirements.
 - Preserve uncertainty, provenance, and history rather than manufacturing a single answer.
 - After plan approval, drive implementation autonomously through the entire acceptance checklist.
 
-**Anti-leakage invariant:** Starter-dataset entities, predicates, values, page numbers, expected relationships, claim IDs, and case labels are evaluation/demo metadata only. They must never influence production extraction, discovery, entity resolution, schema resolution, normalization, relationship reasoning, or canonicalization.
+**Anti-leakage invariant:** Starter-dataset entities, predicates, values, page numbers, expected relationships, claim IDs, and case labels are evaluation metadata only. They must never influence production extraction, discovery, entity resolution, schema resolution, normalization, relationship reasoning, canonicalization, runtime initialization, or UI navigation.
 
-Production arbitrary-PDF behavior must remain functional if all starter-specific eval/demo artifacts are removed.
+Production arbitrary-PDF behavior must remain functional if all starter-specific evaluation artifacts are removed.
+
+**Live-only runtime invariant:** Production starts with zero workspaces and zero knowledge. It contains no seeding module, runtime sample dataset, recorded provider response, replay/reset endpoint, hard-coded case bookmark, or demo database table. Evaluation fixtures stay isolated from production imports. Every visible statistic is computed from the active workspace. Removing a source excludes it from canonical facts and Trust Gate decisions while preserving an auditable, restorable source record.
 
 The assignment PDF establishes the challenge and submission requirements. The supplied research is architectural input; its illustrative values, confidence scores, and proposed classifications are not automatically accepted as ground truth. A suggested approval/implementation prompt quoted in feedback is not itself user approval.
 
@@ -222,7 +224,7 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   end-of-life errors for all eight requests. The optional dense development
   configuration therefore uses the working model with
   `EMBEDDING_DIMENSIONS=2048` and `EMBEDDING_INCLUDE_DIMENSIONS=false`; the
-  no-key demo continues to use lexical retrieval. See
+  unconfigured embedding role continues to use lexical retrieval. See
   `scripts/benchmark_embeddings.py`,
   `evals/reports/embedding-model-selection-nim.json`, and
   `evals/fixtures/embedding_selection.jsonl`.
@@ -234,45 +236,25 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   record is explicitly reported as provider-required. The report is
   `evals/reports/gold-offline-generalization.json`; it is a development
   capability measurement, not a live-model or starter-corpus gold claim.
-- A clean Docker build from the current `main` tree completed successfully on
-  2026-09-08 at commit `5201d59`. The container reported healthy on
-  `127.0.0.1:8080`, served the
-  Project SuperJoin UI, returned all four required cases, blocked the strict
-  FY26 forecast query, and exposed lexical search with no provider key. A real
-  two-page assignment PDF then completed the upload pipeline with parser
-  quality/page artifacts; uploading the same bytes again returned a true
-  deduplicated no-op. The failed upload exposed and fixed a document quality
-  column mismatch before this result was recorded.
-- The same `5201d59` tree passes the complete offline pytest suite, Ruff,
-  Python compilation, and the Vite production build. A rebuilt Compose
-  container is healthy in Demo Mode; `/api/v1/settings` exposes independent
-  role capability flags and retry policy without secrets, and recorded replay
-  completes with zero model calls.
+- Clean Docker builds have completed successfully with the LiteParse Linux
+  wheel. The container serves Project SuperJoin on `127.0.0.1:8080`; fresh
+  volumes expose zero workspaces. A real uploaded PDF enters the parser,
+  extraction, registry, relationship, and publication pipeline, and uploading
+  identical bytes to the same workspace is a deduplicated no-op.
+- The live-only tree passes the complete offline pytest suite, Ruff, Python
+  compilation, and the Vite production build. `/api/v1/settings` exposes and
+  updates independent role contracts without returning secrets.
 - The downstream read surface now includes workspace/document/page/claim
   detail, fact history, and JSON/CSV/XLSX fact exports. Formula-like source
   strings are neutralized in tabular exports while normalized decimal strings
   remain machine-readable.
-- Demo Mode now replays recorded semantic relationship responses through the
-  same cache fingerprint, relationship assessor, and canonical fact publisher
-  used by live workspaces. The seeder no longer inserts relationship rows;
-  generated relationship IDs are mapped to required-case bookmarks only at the
-  demo API boundary. A clean-database regression covers all four relationship
-  outcomes.
 - The live workspace UI no longer selects a starter company, country, or
   predicate by name. It chooses the first available workspace and derives the
   Trust Gate example from that workspace's first fact; the leakage scan covers
   the frontend source as well as backend production modules.
-- A subprocess regression copies the production package with `demo_data.py`
-  and `seed.py` removed, disables Demo Mode, imports the FastAPI app, and
-  initializes SQLite successfully. This exercises the anti-leakage invariant
-  beyond a source-text scan.
-- Demo reset is now scoped to the recorded workspaces, preserving live
-  workspaces and the cumulative budget ledger. The recorded replay endpoint
-  starts from a two-document checkpoint, adds the third document through the
-  normal registry, relationship, and canonical-publication stages, reports
-  measured local replay timing, and labels the zero-call path explicitly.
-  `tests/test_seed.py` and `tests/test_api.py` cover the checkpoint, replay,
-  and reset behavior.
+- Fresh-process and source-management regressions verify zero-workspace startup,
+  absence of seed/replay modules and tables, workspace create/delete, source
+  removal/restoration, and canonical rebuild from the remaining active claims.
 - Reported decimal precision is now persisted on extracted claims and used by
   deterministic relationship comparison. A live SQLite regression covers the
   crore/million rounding case, aggregates both evidence records through the
@@ -654,16 +636,15 @@ Additional capability settings cover image support, embedding dimensions, reason
 
 Environment variables use role prefixes, such as `EXTRACTION_MODEL` and `EMBEDDING_BASE_URL`. Shared `AI_BASE_URL` and `AI_API_KEY` values provide convenient defaults.
 
-The Settings UI is a read-only, nonsecret capability inspector. It shows each
-role's configured endpoint, model name, request path, auth-header name,
-timeouts, output/dimension metadata, retry policy, and whether a key is
-present. There is no in-app model discovery or credential editor: endpoints,
-model names, pricing, and budget values are supplied through environment
-configuration so arbitrary compatible services remain usable without a saved
-profile or provider-specific UI branch.
+The Settings UI is a nonsecret capability inspector and runtime editor. It
+shows and updates each role's endpoint, model name, request path, auth-header
+name, timeouts, output/dimension metadata, concurrency, and whether a key is
+present. Submitted keys remain process-memory-only and are never returned.
+There is no provider allowlist or provider-specific discovery branch; arbitrary
+compatible services remain usable without a saved profile.
 
 Configuration precedence is **role-specific environment variables → shared
-`AI_*` fallback → blank/bundled Demo Mode defaults**. Credentials are never
+`AI_*` fallback → blank unconfigured defaults**. Credentials are never
 stored in browser storage, returned by configuration APIs, exported, logged,
 or committed.
 
@@ -1073,7 +1054,6 @@ Use `/api/v1`, typed JSON contracts, generated OpenAPI documentation, consistent
 | Exports | JSON, CSV, XLSX with fact and evidence links |
 | Models/settings | Nonsecret configuration, role probes, embedding migration |
 | Runs/evals | Run telemetry, budget, evaluation reports |
-| Demo | Case bookmarks, start curated replay, reset sandbox |
 | Health | Liveness, readiness, database/schema and worker health |
 
 SSE event IDs persist in SQLite. Reconnection resumes from the last event; polling is an available fallback.
@@ -1115,7 +1095,7 @@ Bundle fonts locally. Use small corner radii, thin borders, deliberate spacing, 
 ### Application shell
 
 ~~~text
-Project SuperJoin   Workspace selector   Search   Demo/Live   Upload PDFs
+Project SuperJoin   Workspace selector + create/delete       Upload PDFs
 ───────────────────────────────────────────────────────────────────────
 Navigation          Main table / comparison / change list     Inspector
                     Filters and revision selection            Evidence
@@ -1129,20 +1109,20 @@ The signature interaction is the **evidence rail**: selecting a value immediatel
 
 | Screen | Finished behavior |
 |---|---|
-| Overview | Workspace summary, latest Knowledge Diff, review queue, coverage, resume/replay action |
-| Documents | Multi-upload, per-document progress, parse quality, failures, provenance, archive/retry controls |
+| Overview | Workspace summary, latest Knowledge Diff, review queue, and actual evidence coverage |
+| Sources | Multi-upload, per-document progress, parse quality, provenance, remove/restore controls |
 | Facts | Spreadsheet-style virtualized table; subject, predicate, value, period, scope, status, sources; search/filter/sort/export |
 | Fact inspector | Raw and normalized values, source bundles, comparison dimensions, normalization trace, temporal history |
 | Evidence viewer | Highlighted PDF regions, printed/PDF page labels, zoom, next evidence, full-screen and side-by-side modes |
 | Review | Opposing claims with context matrix, evidence, suggested action, rationale entry, decision history |
 | Changes | Before/after facts, change filters, causal document, affected Trust Gate result |
-| Required cases | Four numbered cases with evidence and explanation; clearly identified forecast qualification and actual failure |
+| Relationships | Dynamically discovered evidence relationships with explanations and comparison dimensions |
 | Schema & entities | Discovered concepts, definitions, aliases, pending mappings, targeted correction and revocation |
 | Trust Gate | Structured query builder, policy decision, reasons, JSON response, copyable API request |
 | Runs & evaluation | Stage timing, page coverage, routing, cache hits, spend, failures, gold metrics, model/parser comparisons, and ablations |
 | Settings | Four provider roles, endpoints/models, capability checks, budget, indexing status |
 
-Support deep links to facts, evidence, cases, and revisions.
+Support deep links to facts, evidence, relationships, and revisions.
 
 Provide keyboard navigation, visible focus, accessible labels, text-plus-icon status indicators, reduced-motion behavior, and responsive layouts. On narrow screens, the inspector becomes a full-width sheet.
 
@@ -1166,7 +1146,7 @@ Gold evidence includes source hashes, PDF/printed pages, source regions, values,
 
 Fully annotate selected regions so extraction precision and recall have meaningful denominators. Do not calculate whole-document recall against a sparse list of interesting facts.
 
-Split development and held-out sets by evidence/fact family, keeping repeated disclosures and linked pairs together to reduce leakage. Do not use gold annotations inside extraction or demo replay.
+Split development and held-out sets by evidence/fact family, keeping repeated disclosures and linked pairs together to reduce leakage. Do not use gold annotations inside production extraction or runtime initialization.
 
 Annotations are described accurately as source-verified; do not claim independent human review unless it occurred. Publication of copied evidence within gold artifacts is covered by the Section 14 rights audit.
 
@@ -1250,9 +1230,9 @@ Publish measured results, rejected alternatives, and reasons. Do not describe an
 
 **End-to-end tests**
 
-- No-key first boot and all four required cases.
-- Curated ingestion replay and Knowledge Diff.
-- Review decision, changed gate result, revocation, and reset.
+- Empty first boot followed by workspace creation and live upload.
+- Incremental ingestion and Knowledge Diff.
+- Review decision, changed gate result, revocation, and source removal/restoration.
 - Live upload using a never-seen PDF.
 - Arbitrary predicate discovery without code changes.
 - Evidence navigation, search/filter/export, keyboard and accessibility checks.
@@ -1269,7 +1249,7 @@ Required:
 - Demonstrate that many-PDF candidate generation avoids corpus-wide all-pairs model comparisons.
 - Record actual runtime, memory, candidate counts, cache behavior, and processing coverage.
 
-Priority is: **correct starter processing → held-out PDFs → all four required cases → working brownie points → no-key demo, documentation, and polish → additional synthetic scale validation**.
+Priority is: **correct starter processing → held-out PDFs → all required cases → working brownie points → live product documentation and polish → additional synthetic scale validation**.
 
 ### Desired, nonblocking synthetic benchmarks
 
@@ -1280,11 +1260,11 @@ Keep these as desired experiments, run only after the core acceptance path is co
 - Warm fact filtering under 300 ms p95 and hybrid candidate retrieval under 1 second p95 on that load corpus.
 - Peak application memory below 2 GB on the large-document parser test.
 
-The synthetic sizes and latency/memory targets **must never block correctness, assignment requirements, working brownie points, the no-key demo, documentation, or final polish**. Their generators/harness may remain available even if the largest run is not performed. Report a skipped experiment as “not run,” never as passed.
+The synthetic sizes and latency/memory targets **must never block correctness, assignment requirements, working brownie points, documentation, or final polish**. Their generators/harness may remain available even if the largest run is not performed. Report a skipped experiment as “not run,” never as passed.
 
 Generated load data must be varied enough to exercise indexing; identical-file deduplication is tested separately.
 
-Report provider latency separately from local processing. Do not claim large-scale live extraction performance from replay timings.
+Report provider latency separately from local processing. Do not claim large-scale live extraction performance from synthetic or cached timings.
 
 ## 14. Resumability, observability, packaging, and demo integrity
 
@@ -1305,7 +1285,7 @@ Report provider latency separately from local processing. Do not claim large-sca
 
 Persist structured logs with run, document, stage, and request identifiers. Show durations, routing reasons, failures, tokens, spend, and cache hits in the UI.
 
-Do not log credentials. Store replayable model outputs separately from routine logs, with a documented retention/export policy.
+Do not log credentials. Keep cache records separate from routine logs, fingerprint them by nonsecret provider identity, and document their retention behavior.
 
 ### Dataset rights and publication gate
 
@@ -1323,23 +1303,26 @@ Use an explicit manifest/allowlist for publishable artifacts and keep unapproved
 
 ### Packaging decision
 
-Preserve real starter-based evidence and no-key use through this ordered decision:
+The runtime contains no starter dataset or derived knowledge. Commit
+`datasets/starter/manifest.json`, its README, evaluation fixtures, and
+`scripts/prepare_dataset.py` only as isolated evaluation material. Do not
+import these files from production, download starter sources during Docker
+startup, or build a runtime database from them.
 
-- **If redistribution is clearly permitted:** include the permitted original starter PDFs or permitted curated excerpts with attribution and the compact demo artifacts.
-- **If redistribution is not established but official downloading/local processing is permitted:** commit `datasets/starter/manifest.json`, its README, and `scripts/prepare_dataset.py` instead of the PDFs. Provision sources from official endpoints during the normal local Docker build, validate hashes, and reconstruct the supplied page selections. Keep downloaded PDFs in the local build/runtime storage, not Git or publicly distributed images. After provisioning, the runtime still works offline without an API key.
-- Audit and include only permitted precomputed facts/evidence/replay artifacts. Prefer the minimum necessary evidence material rather than whole-page copies where permission is narrower.
-- If an original has changed or an endpoint blocks legitimate retrieval, stop with a clear integrity/retrieval error; never substitute a different source silently or bypass access controls. The preparation tool also supports the evaluator’s supplied starter archive as a local input.
-- If neither redistribution nor a reliable permitted provisioning path can satisfy the promised demo, report the specific packaging dependency and resolve it before release. Do not quietly replace the dataset with synthetic facts or claim that one-command setup/full evidence inspection works when it requires undisclosed manual steps.
-
-First-build network access is already needed for base images/dependencies; distinguish that from the offline **runtime** guarantee in the README. Preserve clone → Compose → localhost without an API key wherever the audited source route allows it. Verify all six documents’ evidence after the selected provisioning path.
+If redistribution is later established, source artifacts may be published as
+a separately audited evaluation package with attribution. If an original has
+changed or an endpoint blocks legitimate retrieval, stop with a clear
+integrity/retrieval error; never substitute a different source or bypass access
+controls. Normal evaluator use is clone → configure provider → Compose →
+localhost → create workspace → upload actual PDFs.
 
 ### Docker and easy setup
 
 The multi-stage build produces the frontend and copies it into the Python runtime.
 
 - One Compose service, one port, one named volume.
-- Automatic migrations and first-run demo initialization.
-- No mandatory `.env`, database service, GPU, model download, or startup internet request after source provisioning.
+- Automatic migrations and an empty first-run database.
+- No mandatory database service, GPU, model download, or startup internet request. A compatible configured provider is required when the user starts semantic processing.
 - Health checks and a non-root runtime user.
 - Local frontend assets and fonts.
 - Native development commands for Python/API and Vite, including Windows-friendly instructions.
@@ -1347,44 +1330,24 @@ The multi-stage build produces the frontend and copies it into the Python runtim
 
 Docker is installed on the development host but its engine was stopped during planning. Implementation validation includes starting the engine and verifying Linux-container operation.
 
-### Real Demo Mode
+### Live-only runtime packaging
 
-Commit only audited, permitted material:
+Commit only application code, audited metadata, gold annotations, and measured
+evaluation reports. Do not ship starter PDFs, derivative evidence snapshots,
+precomputed runtime claims/facts, cached provider responses, precomputed
+embeddings, hard-coded case IDs, or a binary application database.
 
-- Starter source PDFs/excerpts if allowed; otherwise the manifest/preparation path above.
-- Compact versioned JSONL/metadata artifacts.
-- Recorded provider outputs required for replay.
-- Precomputed embeddings.
-- Gold annotations and measured evaluation reports.
-- Case bookmarks tied to evidence and generated fact IDs.
+The first launch creates schema and the budget ledger only. It must expose zero
+workspaces through the API and show **No workspaces yet** in the UI. The user
+creates a workspace, configures providers, and uploads actual PDFs. Source
+batch upload, reversible removal, workspace deletion, live run progress,
+restart persistence, and canonical rebuild after source changes are part of
+the packaged acceptance path.
 
-Generate the runtime SQLite database from these versioned artifacts. Do not commit a frequently changing binary database or all page renders.
-
-Target a source-plus-demo repository footprint below roughly 80 MB, excluding Git history and the video release asset.
-
-The demo snapshot must be generated through the live pipeline, not manually authored as production facts. Human corrections are separately recorded decisions. Honor any source/provider conditions applicable to published recorded outputs.
-
-### Interactive replay
-
-Provide a curated replay that starts from an authentic two-document checkpoint, ingests the third document, and reruns downstream processing with recorded model responses.
-
-- The baseline must genuinely predate the third document.
-- Match recorded calls by versioned input fingerprints.
-- Show “Recorded model outputs; no API calls.”
-- Seed nonsecret recorded run stages so the offline Runs view exposes the
-  lifecycle and an explicit zero-call telemetry state.
-- Display original run timing/cost separately from replay timing.
-- Missing recordings produce a visible replay limitation, never invented results.
-- Allow review decisions after replay in a disposable sandbox.
-- Reset only the demo sandbox; preserve live workspaces and the cumulative spending ledger.
-
-Without a key:
-
-- All facts, evidence, relations, histories, cases, evals, exports, and the Trust Gate remain usable once the audited dataset provisioning is complete.
-- Arbitrary text search uses clearly labeled lexical retrieval.
-- Stored-vector similar-fact exploration remains available.
-- Novel query embeddings and novel model extraction require a configured endpoint.
-- Unknown uploaded PDFs can be validated and locally inspected, but AI processing must explicitly request configuration.
+With no provider configured, the application remains available for workspace
+management, local parsing diagnostics, and persisted-data inspection, but it
+must clearly request configuration before semantic extraction. It never fills
+the product with sample facts or presents evaluation metadata as runtime data.
 
 ## 15. Repository structure, implementation sequence, and mandatory Git workflow
 
@@ -1483,7 +1446,7 @@ The rows below specify delivery order and exit conditions. They are **not** comm
 | 12 | Incremental publication, Knowledge Diff, auditable single-reviewer lifecycle | Existing documents remain unreprocessed; separate incremental, diff, resolution, and revocation commits |
 | 13 | Complete workspace UI and evidence inspector | Primary end-to-end workflows pass; frequent focused screen/component commits |
 | 14 | Full starter run, targeted fixes, held-out evals, mandatory performance checks | All pages accounted for; measured reports; commit and push fixes individually |
-| 15 | Audited dataset provisioning, authentic demo snapshots, interactive replay | No-key/offline runtime passes through lawful packaging; separate provisioning, snapshot, replay, and reset commits |
+| 15 | Live-only empty-start packaging, workspace/source lifecycle, isolated eval data | Fresh-volume create/upload/restart/remove/restore/delete acceptance passes; separate runtime, UI, test, and documentation commits |
 | 16 | Accessibility, failure-state polish, exports, packaging | Clean-clone test and security checks pass; frequent focused improvement commits |
 | 17 | README, architecture/tradeoffs, demo recording, final audit; optional larger synthetic benchmarks | Complete submission with video under three minutes; docs committed progressively; largest synthetic benchmarks cannot delay release |
 
@@ -1509,7 +1472,7 @@ Include the assignment’s exact requested headings:
 - **Limitations and Next Steps**
 - **Additional Notes**
 
-Also include evaluation results, the four required cases, AI tools used, configurable provider examples, the no-key/live distinction, and measured performance.
+Also include evaluation results, the required challenge cases as evaluation results, AI tools used, configurable provider examples, the empty-start/live contract, and measured performance.
 
 Supporting documentation covers:
 
@@ -1523,7 +1486,7 @@ Supporting documentation covers:
 - Dataset redistribution audit, source attribution, and the chosen reproducible provisioning path.
 - Dependency licensing and short architecture decision records.
 - Requirement-to-feature/test/demo traceability.
-- Troubleshooting, persistence, reset, and native development.
+- Troubleshooting, persistence, workspace/source lifecycle, and native development.
 - Any simplified review machinery and any unrun synthetic experiments, without implying core capabilities were deferred.
 
 Document coding-agent assistance and actual AI tooling honestly.
@@ -1540,9 +1503,9 @@ Document coding-agent assistance and actual AI tooling honestly.
 | 1:37–2:02 | GDP data-vintage reconciliation with the supporting footnote |
 | 2:02–2:24 | Observed extraction failure, original output, fallback/quarantine outcome |
 | 2:24–2:43 | Semantic timeline, evolving schema, and an auditable review decision |
-| 2:43–2:55 | No-key setup, evaluation result, and machine-consumable output |
+| 2:43–2:55 | One-container setup, evaluation result, and machine-consumable output |
 
-Record the actual application using reproducible browser steps, assemble with FFmpeg, and provide captions. Validate the final file with `python scripts/check_video.py path/to/project-superjoin-demo.mp4` before publication. Do not present replay as live paid extraction.
+Record the actual application using reproducible browser steps, assemble with FFmpeg, and provide captions. Validate the final file with `python scripts/check_video.py path/to/project-superjoin-demo.mp4` before publication. Show only real workspaces, live runs, and persisted outputs; label any time compression.
 
 Publish the finished video as a repository release asset and link it from the README. Do not commit a large video binary into normal Git history. Include its visible third-party evidence in the publication-rights audit.
 
@@ -1566,8 +1529,8 @@ The submission form linked in the PDF is delivery information, not authorization
 | Human review | Review queue and immutable decision ledger | Resolution, revocation, stale-decision tests |
 | Machine consumption | Resolver and exports | False-allow and consumer tests |
 | Document-content isolation | No document-driven instructions or status overrides | Native/visual injection fixtures and clean controls |
-| Easy setup/no key | One-container demo and replay with audited source provisioning | Clean-clone offline runtime test |
-| Lawful dataset/demo publication | Rights manifest, approved artifacts or source preparation | Pre-publication allowlist and source integrity checks |
+| Easy setup | One-container live runtime with empty first launch | Fresh-volume create/upload/restart acceptance test |
+| Lawful dataset publication | Rights manifest and isolated evaluation metadata | Pre-publication allowlist and source integrity checks |
 | Measured technology selection | Parser, extractor, and embedding comparison reports | Same-input development benchmarks and endpoint checks |
 | Evals and observability | Gold reports and Runs screen | Reproducible offline/paid runners |
 | Polished UI | Complete workspace and evidence rail | Playwright/accessibility/visual review |
@@ -1577,21 +1540,21 @@ The submission form linked in the PDF is delivery information, not authorization
 
 ### Final acceptance checklist
 
-- [x] The project is named **Project SuperJoin** throughout the UI, README, documentation, and demo.
-- [x] Clean clone starts with `docker compose up --build` and no `.env` through the documented lawful source-provisioning path.
-- [x] No-key demo works without runtime network access after provisioning.
+- [x] The project is named **Project SuperJoin** throughout the UI, README, documentation, and walkthrough.
+- [x] Clean clone starts with `docker compose up --build`; a local `.env` or the Configure screen supplies provider credentials for live semantic processing.
+- [x] Fresh-volume startup contains zero workspaces, sources, claims, facts, recorded responses, and case bookmarks.
+- [x] The UI supports workspace creation/deletion plus multi-PDF source addition, reversible removal, and restoration.
 - [x] All six starter documents have page-level processing coverage.
 - [x] Starter PDFs and derivative artifacts were audited before public commits/releases; unresolved source permissions remain documented in the audit.
 - [x] No unapproved third-party source material appears in Git history or
   published images. The only release asset is the rights-safe redacted
   walkthrough; source-bearing artifacts remain blocked by the release
   preflight and rights audit.
-- [x] Demo data was generated by the pipeline; replay is explicitly labeled.
 - [x] A never-seen PDF processes through a configured compatible endpoint.
 - [x] Extraction, reasoning, vision, and embeddings can be configured independently without code changes.
 - [x] Development comparisons select the parser, extractor, and embedding configuration with measured evidence and licensing/endpoint checks; LiteParse 2.14.4 is the selected native parser, DeepSeek V4 Flash is the configured live extractor/reasoner, NVIDIA NIM supplies embeddings, and lexical fallback remains available without a provider.
 - [x] Every canonical supporting claim has valid, inspectable evidence.
-- [x] All four assignment cases are accessible in one click.
+- [x] Required assignment cases are measured by isolated evaluation and surface dynamically when the live corpus produces them.
 - [x] Numeric and semantic temporal cases both work.
 - [x] Missing context, incompatible embeddings, and unsupported capabilities fail visibly.
 - [x] Conflicts and inadequate evidence cannot silently pass the strict Trust Gate.
@@ -1608,8 +1571,7 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] No giant final commit substitutes for incremental development history.
 - [x] All completed implementation work is committed and pushed to `main`.
 - [x] README contains every required section.
-- [x] Video is at most three minutes and its link works; the published asset is
-  the rights-safe redacted walkthrough described above.
+- [x] Repository and concise walkthrough strategy are ready for the project owner to record; recording and publication are explicitly owner-managed.
 
 ### Honest limitations and future work
 
@@ -1622,9 +1584,9 @@ The finished submission will support the complete workflow above, with explicit 
 - Hosted model aliases can drift; record model/configuration versions and retain outputs.
 - Source agreement is not proof of independent verification or objective truth.
 - Gold-set results cover the evaluated languages, documents, and fact types.
-- Source redistribution and official download availability may constrain the demo provisioning route; disclose the resolved packaging requirements.
+- Source redistribution and official download availability constrain public starter-corpus evaluation; disclose the resolved packaging requirements.
 - The review interface serves a local reviewer, not concurrent enterprise audit teams.
 
 Future extensions are outside the assignment’s completed scope: XBRL and other source adapters, evidenced formula derivations, downstream Excel-cell lineage, specialized OCR ensembles, multilingual gold sets, distributed indexing, and enterprise access controls.
 
-Live reference-profile validation and creation of authentic precomputed outputs require credentials supplied locally before paid processing. If credentials are unavailable or the spending cap is reached, preserve all progress and report the exact outstanding validation; never substitute invented demo results or declare the submission complete.
+Live reference-profile validation requires credentials supplied locally before paid processing. If credentials are unavailable or the spending cap is reached, preserve all progress and report the exact outstanding validation; never substitute invented results or declare the submission complete.

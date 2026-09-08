@@ -43,7 +43,6 @@ def evaluate(
         raise SystemExit("Evaluation database already exists; choose a new --database path to preserve prior results and budget accounting")
     object.__setattr__(settings, "database_path", database_path)
     object.__setattr__(settings, "upload_dir", database_path.parent / "uploads-eval")
-    object.__setattr__(settings, "demo_mode", False)
     init_db()
     source_by_id = {item["id"]: item for item in source_manifest["documents"]}
     workspace_ids = sorted({item["workspace_id"] for item in source_manifest["documents"]})

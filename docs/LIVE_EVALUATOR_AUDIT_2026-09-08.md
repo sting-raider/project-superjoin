@@ -62,7 +62,7 @@ No P1 below is a claim of a security incident.
 | E20 | P2 | Settings clearly reports capability/configuration, but offers no provider health probe or practical recovery action. | Keep secrets server-side; add a bounded capability test with explicit cost/error output and copyable configuration guidance. Editable credential fields are not required. |
 | E21 | P3 | Escape does not dismiss the evidence inspector. Upload labels and the fake filter have weak control semantics. | Add keyboard dismissal, focus management, and semantic upload/filter controls; verify keyboard-only navigation. |
 | E22 | P3 | Large hero, repeated promotional copy, and sparse empty panels occupy substantial space above the useful data. | Prioritize active runs, facts, failures, and next actions in the working UI. Preserve the green palette and clear visual hierarchy. |
-| E23 | P2 | Reopening Settings briefly displayed all providers offline, `RECORDED DEMO MODE`, and a full $20 budget before the real live settings arrived. | Render an explicit loading state; do not present fabricated defaults as runtime facts. Verify slow and failed settings requests. |
+| E23 | P2 | Reopening Settings briefly displayed placeholder provider and budget values before the real settings arrived. | Render an explicit loading state; do not present fabricated defaults as runtime facts. Verify slow and failed settings requests. |
 
 ## Browser-dependent or unverified findings
 
@@ -78,7 +78,7 @@ No P1 below is a claim of a security incident.
 - No new out-of-domain fixture was generated during this pass. The SaaS case
   was an existing real live output, not a fresh generation in this evaluation.
 - Cross-document correctness, semantic discovery beyond page 24, scan fallback,
-  review revocation/staleness, historical Trust Gate, and no-key demo startup
+  review revocation/staleness, historical Trust Gate, and fresh empty startup
   require additional end-to-end verification. Accepting/parsing 100 pages is
   not equivalent to validating useful extraction across all 100 pages.
 - Pricing figures below are application-reported ledger values, not independently
