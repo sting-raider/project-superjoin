@@ -130,6 +130,10 @@ def assess_relationships(
                     continue
                 if semantic is not None:
                     relationship_type, reason, dimensions, confidence = semantic
+                elif relationship_type == "CONTRADICTS":
+                    relationship_type = "UNCERTAIN"
+                    reason = "Semantic evidence requires review; deterministic comparison abstained."
+                    confidence = 0.45
             elif relationship_type == "UNRELATED":
                 if progress:
                     progress(processed_pairs, total_pairs, inserted, semantic_calls)
@@ -158,6 +162,7 @@ def _relationship_pairs(
             (left, right)
             for index, left in enumerate(bounded)
             for right in bounded[index + 1 :]
+            if left["document_id"] != right["document_id"]
         ]
     new_claims = [claim for claim in group if claim["document_id"] == run_document_id]
     prior_claims = [claim for claim in group if claim["document_id"] != run_document_id]
@@ -668,7 +673,7 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
         precision_a = a.get("precision") if hasattr(a, "get") else a["precision"]
         precision_b = b.get("precision") if hasattr(b, "get") else b["precision"]
         dimensions["value"] = compare_numeric(a["normalized_value"], b["normalized_value"], precision_a, precision_b)
-    elif a["normalized_value"] == b["normalized_value"]:
+    elif a["normalized_value"] is not None and b["normalized_value"] is not None and a["normalized_value"] == b["normalized_value"]:
         dimensions["value"] = "equal"
     if period_a != period_b:
         return "UNRELATED", "The claims apply to different periods.", dimensions, 0.93

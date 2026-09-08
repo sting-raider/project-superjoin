@@ -45,6 +45,15 @@ def test_equivalent_fiscal_labels_and_modalities_corroborate_unseen_metric() -> 
     assert dimensions["modality"] == "MATCH"
 
 
+def test_missing_semantic_normalizations_never_create_false_corroboration() -> None:
+    relationship, _, dimensions, _ = compare_claim_pair(
+        _claim(subject="Northstar Manufacturing", predicate="appointed_executive", period="FY2026", modality="reported", value_type="semantic", normalized_value=None),
+        _claim(subject="Northstar Manufacturing", predicate="appointed_executive", period="FY2026", modality="reported", value_type="semantic", normalized_value=None),
+    )
+    assert relationship == "CONTRADICTS"
+    assert dimensions["value"] == "UNKNOWN"
+
+
 def test_temporal_semantic_change_abstains_for_reasoning_lane() -> None:
     relationship, _, _, _ = compare_claim_pair(
         _claim(subject="Suvir Suren Sujan", predicate="director_role", period="2022-05-14", value_type="semantic", normalized_value="director", evidence_json=json.dumps({"text": "director"})),
@@ -63,16 +72,17 @@ def test_live_sqlite_relationship_uses_precision_and_aggregates_evidence(tmp_pat
         now = utc_now()
         with db() as conn:
             conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
-            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "source.pdf", "hash", "complete", now))
-            for claim_id, value, precision, evidence in (
-                ("c1", "81415380000", 2, "Revenue 81,415.38 million"),
-                ("c2", "81420000000", 0, "Revenue 8,142 crore"),
+            for document_id in ("d1", "d2"):
+                conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", (document_id, "w", f"{document_id}.pdf", document_id, "complete", now))
+            for claim_id, document_id, value, precision, evidence in (
+                ("c1", "d1", "81415380000", 2, "Revenue 81,415.38 million"),
+                ("c2", "d2", "81420000000", 0, "Revenue 8,142 crore"),
             ):
                 conn.execute(
                     """INSERT INTO claims
                     (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,precision,period,modality,scope,evidence_json,created_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (claim_id, "w", "d", "Delhivery", "revenue_from_services", value, value, "number", "INR", precision, "FY24", "actual", "consolidated", json.dumps({"text": evidence}), now),
+                    (claim_id, "w", document_id, "Delhivery", "revenue_from_services", value, value, "number", "INR", precision, "FY24", "actual", "consolidated", json.dumps({"text": evidence}), now),
                 )
                 conn.execute("INSERT INTO claims_fts(claim_id,workspace_id,subject,predicate,raw_value,period,modality,scope) VALUES(?,?,?,?,?,?,?,?)", (claim_id, "w", "Delhivery", "revenue_from_services", value, "FY24", "actual", "consolidated"))
         assess_relationships("w")
@@ -104,14 +114,15 @@ def test_conflicting_unseen_metric_is_one_fact_family_with_alternatives(tmp_path
         now = utc_now()
         with db() as conn:
             conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
-            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "metrics.pdf", "hash", "complete", now))
-            for claim_id, value in (("c1", "0.028"), ("c2", "0.031")):
+            for document_id in ("d1", "d2"):
+                conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", (document_id, "w", f"{document_id}.pdf", document_id, "complete", now))
+            for claim_id, document_id, value in (("c1", "d1", "0.028"), ("c2", "d2", "0.031")):
                 evidence = json.dumps({"text": f"Gross customer churn was {value}."})
                 conn.execute(
                     """INSERT INTO claims
                     (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,created_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (claim_id, "w", "d", "Nimbus Cloud", "gross_customer_churn", value, value, "percentage", "%", "FY2026", "actual", "consolidated", evidence, now),
+                    (claim_id, "w", document_id, "Nimbus Cloud", "gross_customer_churn", value, value, "percentage", "%", "FY2026", "actual", "consolidated", evidence, now),
                 )
         assess_relationships("w")
         rebuild_workspace("w")
@@ -141,7 +152,8 @@ def test_confirmed_registry_aliases_share_reasoning_and_fact_family(tmp_path: Pa
         now = utc_now()
         with db() as conn:
             conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
-            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "metrics.pdf", "hash", "complete", now))
+            for document_id in ("d1", "d2"):
+                conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", (document_id, "w", f"{document_id}.pdf", document_id, "complete", now))
             conn.execute("INSERT INTO entities(id,workspace_id,canonical_name,created_at) VALUES(?,?,?,?)", ("entity-acme", "w", "Acme Corporation", now))
             conn.execute("INSERT INTO predicates(id,workspace_id,key,value_kind,created_at) VALUES(?,?,?,?,?)", ("predicate-arr", "w", "annual_recurring_revenue", "money", now))
             for index, (subject, predicate) in enumerate((("Acme Corp.", "ARR"), ("ACME Corporation", "annual recurring revenue")), start=1):
@@ -151,7 +163,7 @@ def test_confirmed_registry_aliases_share_reasoning_and_fact_family(tmp_path: Pa
                     """INSERT INTO claims
                     (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,created_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (claim_id, "w", "d", subject, predicate, "$10 million", "10000000", "money", "USD", "FY2026", "actual", "consolidated", evidence, now),
+                    (claim_id, "w", f"d{index}", subject, predicate, "$10 million", "10000000", "money", "USD", "FY2026", "actual", "consolidated", evidence, now),
                 )
                 conn.execute(
                     """INSERT INTO claim_interpretations
@@ -234,9 +246,10 @@ def test_reasoning_role_can_resolve_deterministic_context_abstention(monkeypatch
         evidence = json.dumps({"text": "The FY25 first advance estimate is 6.4%."})
         with db() as conn:
             conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)", ("w", "Workspace", now))
-            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", ("d", "w", "source.pdf", "hash", "complete", now))
-            for claim_id, period, value in (("c1", "FY25", "0.064"), ("c2", "FY26", "0.065")):
-                conn.execute("INSERT INTO claims(id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,extraction_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (claim_id, "w", "d", "India", "real_gdp_growth", value, value, "percentage", "%", period, "estimate", "India", evidence, "accepted", now))
+            for document_id in ("d1", "d2"):
+                conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES(?,?,?,?,?,?)", (document_id, "w", f"{document_id}.pdf", document_id, "complete", now))
+            for claim_id, document_id, period, value in (("c1", "d1", "FY25", "0.064"), ("c2", "d2", "FY26", "0.065")):
+                conn.execute("INSERT INTO claims(id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,extraction_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (claim_id, "w", document_id, "India", "real_gdp_growth", value, value, "percentage", "%", period, "estimate", "India", evidence, "accepted", now))
         monkeypatch.setattr("app.knowledge.available", lambda role=None: role == "reasoning")
 
         def fake_chat(role, system, user, model=None, max_output_tokens=1200):
