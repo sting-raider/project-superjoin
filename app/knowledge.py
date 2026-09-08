@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from .budget import BudgetExceeded, estimate_cost, reserve, settle
@@ -41,7 +42,11 @@ def _id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
-def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
+def assess_relationships(
+    workspace_id: str,
+    run_id: str | None = None,
+    progress: Callable[[int, int, int, int], None] | None = None,
+) -> int:
     """Compare relevant claims sharing an exact subject/predicate lane.
 
     Incremental production runs compare new claims with a bounded, ranked set
@@ -93,10 +98,20 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
         groups.setdefault(identity, []).append(claim)
     inserted = 0
     semantic_calls = 0
-    for group in groups.values():
-        for left, right in _relationship_pairs(group, run_document_id):
+    pair_groups = [
+        _relationship_pairs(group, run_document_id) for group in groups.values()
+    ]
+    total_pairs = sum(len(pairs) for pairs in pair_groups)
+    processed_pairs = 0
+    if progress:
+        progress(0, total_pairs, inserted, semantic_calls)
+    for pairs in pair_groups:
+        for left, right in pairs:
+            processed_pairs += 1
             claim_a, claim_b = sorted((left, right), key=lambda item: item["id"])
             if (claim_a["id"], claim_b["id"]) in existing_pairs:
+                if progress:
+                    progress(processed_pairs, total_pairs, inserted, semantic_calls)
                 continue
             relationship_type, reason, dimensions, confidence = compare_claim_pair(claim_a, claim_b)
             if _needs_semantic_relationship_review(claim_a, claim_b, relationship_type):
@@ -105,10 +120,16 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
                     semantic_calls += 1
                     semantic = _semantic_relationship(claim_a, claim_b, run_id)
                 if semantic is None and relationship_type == "UNRELATED":
+                    if progress:
+                        progress(
+                            processed_pairs, total_pairs, inserted, semantic_calls
+                        )
                     continue
                 if semantic is not None:
                     relationship_type, reason, dimensions, confidence = semantic
             elif relationship_type == "UNRELATED":
+                if progress:
+                    progress(processed_pairs, total_pairs, inserted, semantic_calls)
                 continue
             relationship_id = "rel-" + hashlib.sha256(f"{claim_a['id']}:{claim_b['id']}:{relationship_type}".encode()).hexdigest()[:16]
             with db() as conn:
@@ -120,6 +141,8 @@ def assess_relationships(workspace_id: str, run_id: str | None = None) -> int:
                     (relationship_id, workspace_id, claim_a["id"], claim_b["id"], relationship_type, reason, json.dumps(dimensions), confidence, utc_now()),
                 )
                 inserted += cursor.rowcount
+            if progress:
+                progress(processed_pairs, total_pairs, inserted, semantic_calls)
     return inserted
 
 

@@ -146,14 +146,60 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         )
         _raise_if_cancelled(run_id)
         _start_stage(run_id, "registry", inserted, "Resolving entities and predicates")
-        registered = register_workspace_claims(workspace_id, run_id)
-        _finish_stage(run_id, "registry", {"claims_registered": registered})
+        registered = register_workspace_claims(
+            workspace_id,
+            run_id,
+            lambda current, total: _update_stage(
+                run_id,
+                "registry",
+                current,
+                total,
+                f"Resolved {current} of {total} claim schemas",
+                {
+                    "claims_resolved": current,
+                    **_model_role_counts(
+                        run_id, {"registry-embedding", "registry-resolution"}
+                    ),
+                },
+            ),
+        )
+        _finish_stage(
+            run_id,
+            "registry",
+            {
+                "claims_registered": registered,
+                **_model_role_counts(
+                    run_id, {"registry-embedding", "registry-resolution"}
+                ),
+            },
+        )
         _start_stage(run_id, "relationships", inserted, "Comparing relevant new claims")
         from .knowledge import assess_relationships, rebuild_workspace
 
-        relationships = assess_relationships(workspace_id, run_id)
+        relationships = assess_relationships(
+            workspace_id,
+            run_id,
+            lambda current, total, created, semantic: _update_stage(
+                run_id,
+                "relationships",
+                current,
+                total,
+                f"Compared {current} of {total} relevant claim pairs",
+                {
+                    "pairs_compared": current,
+                    "relationships_created": created,
+                    "semantic_reviews": semantic,
+                    **_model_role_counts(run_id, {"reasoning"}),
+                },
+            ),
+        )
         _finish_stage(
-            run_id, "relationships", {"relationships_created": relationships}
+            run_id,
+            "relationships",
+            {
+                "relationships_created": relationships,
+                **_model_role_counts(run_id, {"reasoning"}),
+            },
         )
         _start_stage(run_id, "publication", 1, "Publishing committed knowledge revision")
         rebuild_workspace(workspace_id, run_id)
@@ -1179,6 +1225,30 @@ def _batch_counts(run_id: str) -> dict[str, Any]:
             (run_id,),
         ).fetchone()
     return {**dict(row), **dict(calls)}
+
+
+def _model_role_counts(run_id: str, roles: set[str]) -> dict[str, int]:
+    if not roles:
+        return {
+            "logical_calls": 0,
+            "http_attempts": 0,
+            "cache_hits": 0,
+            "failed_calls": 0,
+            "provider_latency_ms": 0,
+        }
+    ordered_roles = sorted(roles)
+    placeholders = ",".join("?" for _ in ordered_roles)
+    with db() as conn:
+        row = conn.execute(
+            f"""SELECT COUNT(*) AS logical_calls,
+            SUM(COALESCE(attempts,0)) AS http_attempts,
+            SUM(COALESCE(cache_hit,0)) AS cache_hits,
+            SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed_calls,
+            SUM(COALESCE(latency_ms,0)) AS provider_latency_ms
+            FROM model_calls WHERE run_id=? AND role IN ({placeholders})""",
+            (run_id, *ordered_roles),
+        ).fetchone()
+    return {key: int(value or 0) for key, value in dict(row).items()}
 
 
 def _mark_provisional(run_id: str, state: str) -> None:

@@ -5,6 +5,7 @@ import math
 import re
 import threading
 import uuid
+from collections.abc import Callable
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -161,14 +162,22 @@ def _materialize_resolution(
     return {**resolution, "relation": relation}
 
 
-def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> int:
+def register_workspace_claims(
+    workspace_id: str,
+    run_id: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> int:
     """Register unresolved vocabulary once per workspace to avoid write races."""
 
     with _workspace_lock(workspace_id):
-        return _register_workspace_claims(workspace_id, run_id)
+        return _register_workspace_claims(workspace_id, run_id, progress)
 
 
-def _register_workspace_claims(workspace_id: str, run_id: str | None = None) -> int:
+def _register_workspace_claims(
+    workspace_id: str,
+    run_id: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> int:
     with db() as conn:
         rows = conn.execute(
             """SELECT c.id,c.subject,c.predicate,c.value_type,c.evidence_json
@@ -232,7 +241,10 @@ def _register_workspace_claims(workspace_id: str, run_id: str | None = None) -> 
     entity_resolutions: dict[str, dict[str, Any]] = {}
     predicate_resolutions: dict[str, dict[str, Any]] = {}
     semantic_budget = [max(0, settings.registry_semantic_limit)]
-    for row in rows:
+    total = len(rows)
+    if progress:
+        progress(0, total)
+    for index, row in enumerate(rows, start=1):
         evidence = json.loads(row["evidence_json"])
         entity_key = _name_key(row["subject"])
         predicate_key = _predicate_key(row["predicate"])
@@ -312,6 +324,8 @@ def _register_workspace_claims(workspace_id: str, run_id: str | None = None) -> 
                     row["id"],
                 ),
             )
+        if progress:
+            progress(index, total)
     return len(rows)
 
 
