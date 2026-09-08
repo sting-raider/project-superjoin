@@ -52,9 +52,9 @@ function App() {
   const [showWorkspaceForm, setShowWorkspaceForm] = useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
 
-  const refresh = async (id = workspace) => {
+  const refresh = async (id = workspace, quiet = false) => {
     if (!id) { setLoading(false); return }
-    setLoading(true)
+    if (!quiet) setLoading(true)
     try {
       const [nextOverview, nextFacts, nextRelationships, nextDocuments, nextChanges, nextReviews, nextRuns] = await Promise.all([
         get(`/overview?workspace_id=${id}`), get(`/facts?workspace_id=${id}&limit=200`),
@@ -63,7 +63,7 @@ function App() {
       ])
       setOverview(nextOverview); setFacts(nextFacts.items)
       setRelationships(nextRelationships.items); setDocuments(nextDocuments.items); setChanges(nextChanges.items); setReviews(nextReviews.items); setRuns(nextRuns.items)
-    } catch (error) { setNotice(error.message) } finally { setLoading(false) }
+    } catch (error) { setNotice(error.message) } finally { if (!quiet) setLoading(false) }
   }
 
   useEffect(() => {
@@ -74,6 +74,11 @@ function App() {
     }).catch((error) => { setNotice(error.message); setLoading(false) })
   }, [])
   useEffect(() => { if (workspace) refresh(workspace) }, [workspace])
+  useEffect(() => {
+    if (!workspace || !runs.some((run) => ['queued', 'processing'].includes(run.status))) return undefined
+    const timer = window.setTimeout(() => refresh(workspace, true), 1500)
+    return () => window.clearTimeout(timer)
+  }, [workspace, runs])
 
   const filteredFacts = useMemo(() => {
     if (!query.trim()) return facts
@@ -108,7 +113,7 @@ function App() {
       }
       await refresh(workspace)
       setNotice(`${queued} PDF${queued === 1 ? '' : 's'} queued for this workspace${duplicates ? ` · ${duplicates} already present` : ''}. Follow live progress under Runs.`)
-      setTimeout(() => refresh(workspace), 1400)
+      setTimeout(() => refresh(workspace, true), 1400)
     } catch (error) { setNotice(error.message) }
   }
 
@@ -259,7 +264,12 @@ function Settings() {
       return next
     })
   }
-  useEffect(() => { get('/settings').then(hydrate).catch((error) => setStatus(error.message)) }, [])
+  const loadSettings = () => {
+    setStatus('')
+    get('/settings').then(hydrate).catch((error) => setStatus(error.message || 'Settings could not be loaded.'))
+  }
+  useEffect(loadSettings, [])
+  if (!settings) return <div className="content"><div className="section-heading"><div><span className="eyebrow">RUNTIME CONFIGURATION</span><h2>Provider desk</h2><p>Configure each OpenAI-compatible role independently.</p></div></div><div className="panel settings-loading" role="status">{status ? <><h3>Provider settings are unavailable.</h3><p>{status}</p><button className="secondary-button" onClick={loadSettings}>Retry</button></> : <><div className="spinner" /><span>Loading the active provider contract…</span></>}</div></div>
   const draft = drafts[activeRole] || {}
   const change = (field, value) => setDrafts((current) => ({ ...current, [activeRole]: { ...current[activeRole], [field]: value } }))
   const applyPreset = (id) => {
