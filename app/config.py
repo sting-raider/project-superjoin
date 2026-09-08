@@ -39,6 +39,14 @@ class Settings:
     database_path: Path = Path(os.getenv("DATABASE_PATH", "data/project_superjoin.sqlite3"))
     upload_dir: Path = Path(os.getenv("UPLOAD_DIR", "data/uploads"))
     demo_mode: bool = os.getenv("DEMO_MODE", "true").lower() in {"1", "true", "yes", "on"}
+    parser_backend: str = _env("PARSER_BACKEND", "liteparse").lower()
+    parser_timeout_seconds: int = _int_env("PARSER_TIMEOUT_SECONDS", 180)
+    parser_pool_size: int = _int_env("PARSER_POOL_SIZE", 1)
+    local_ocr_enabled: bool = _bool_env("LOCAL_OCR_ENABLED", True)
+    local_ocr_language: str = _env("LOCAL_OCR_LANGUAGE", "eng")
+    local_ocr_dpi: int = _int_env("LOCAL_OCR_DPI", 150)
+    local_ocr_slice_pages: int = _int_env("LOCAL_OCR_SLICE_PAGES", 8)
+    local_ocr_workers: int = _int_env("LOCAL_OCR_WORKERS", 2)
     ai_base_url: str = _env("AI_BASE_URL")
     ai_api_key: str = _env("AI_API_KEY")
     extraction_base_url: str = _env("EXTRACTION_BASE_URL", _env("AI_BASE_URL"))
@@ -121,3 +129,6 @@ class Settings:
 
 
 settings = Settings()
+
+if settings.parser_backend not in {"liteparse", "pdfplumber"}:
+    raise ValueError("PARSER_BACKEND must be liteparse or pdfplumber")

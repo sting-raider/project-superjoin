@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS page_artifacts (
   native_text TEXT NOT NULL DEFAULT '',
   parser TEXT NOT NULL,
   parser_version TEXT NOT NULL,
+  parser_config_hash TEXT NOT NULL DEFAULT '',
   quality_score REAL NOT NULL,
   quality_flags_json TEXT NOT NULL DEFAULT '[]',
   disposition TEXT NOT NULL DEFAULT 'pending',
@@ -439,6 +440,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "attempts": "INTEGER NOT NULL DEFAULT 1",
         },
         "claims": {"precision": "INTEGER", "run_id": "TEXT"},
+        "page_artifacts": {"parser_config_hash": "TEXT NOT NULL DEFAULT ''"},
         "claim_interpretations": {
             "entity_id": "TEXT",
             "predicate_id": "TEXT",

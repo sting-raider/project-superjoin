@@ -2,14 +2,31 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
+import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import pdfplumber
 
+from .config import settings
 from .normalization import infer_modality, parse_numeric, parse_period
+from .parser_routing import requires_local_ocr
 from .security import security_flags
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ParsedBlock:
+    id: str
+    kind: str
+    text: str
+    bbox: list[float] | None
+    start: int
+    end: int
 
 
 @dataclass
@@ -21,6 +38,11 @@ class ParsedPage:
     words: list[dict[str, Any]]
     quality_score: float
     flags: list[str]
+    blocks: list[ParsedBlock] = field(default_factory=list)
+    disposition: str = "native"
+    parser: str = "unknown"
+    parser_version: str = "unknown"
+    parser_config_hash: str = ""
 
 
 @dataclass
@@ -29,6 +51,7 @@ class ParsedDocument:
     sha256: str
     parser: str
     parser_version: str
+    parser_config_hash: str = ""
 
 
 def _quality(text: str, words: list[dict[str, Any]], page: Any) -> tuple[float, list[str]]:
@@ -49,22 +72,303 @@ def _quality(text: str, words: list[dict[str, Any]], page: Any) -> tuple[float, 
     return max(0.05, min(1.0, score)), flags
 
 
-def parse_pdf(data: bytes) -> ParsedDocument:
+def parse_pdf(data: bytes, backend: str | None = None) -> ParsedDocument:
+    """Parse a PDF through the configured native-first backend.
+
+    LiteParse is the production default. Its complexity metadata routes only
+    pages with a genuinely unusable native text layer through bounded local
+    OCR. pdfplumber remains available as an explicit operational fallback.
+    """
+
+    selected = (backend or settings.parser_backend).strip().lower()
+    if selected == "pdfplumber":
+        return _parse_pdfplumber(data)
+    if selected != "liteparse":
+        raise ValueError(f"Unsupported parser backend: {selected}")
+    try:
+        return _parse_liteparse(data)
+    except Exception as exc:  # noqa: BLE001 - explicit operational fallback boundary
+        # A parser backend failure must not make an otherwise valid upload
+        # unusable. The selected backend and config remain visible in the
+        # resulting parser identity and therefore cannot reuse its checkpoints.
+        logger.warning("LiteParse failed; using pdfplumber fallback: %s", exc)
+        return _parse_pdfplumber(data, parser_name="pdfplumber-fallback")
+
+
+def _parse_pdfplumber(data: bytes, parser_name: str = "pdfplumber") -> ParsedDocument:
     pages: list[ParsedPage] = []
+    config_hash = _parser_config_hash(parser_name, {})
+    parser_version = getattr(pdfplumber, "__version__", "unknown")
     with pdfplumber.open(io.BytesIO(data)) as pdf:
         for index, page in enumerate(pdf.pages):
             text = page.extract_text(x_tolerance=1, y_tolerance=3) or ""
             words = page.extract_words(x_tolerance=1, y_tolerance=3, keep_blank_chars=False) or []
             score, flags = _quality(text, words, page)
-            pages.append(ParsedPage(index, float(page.width), float(page.height), text, words, score, flags))
-    return ParsedDocument(pages, hashlib.sha256(data).hexdigest(), "pdfplumber", getattr(pdfplumber, "__version__", "unknown"))
+            disposition = (
+                "vision-required"
+                if {"low-native-text", "no-word-geometry"}.intersection(flags)
+                else "native"
+            )
+            pages.append(
+                ParsedPage(
+                    index,
+                    float(page.width),
+                    float(page.height),
+                    text,
+                    words,
+                    score,
+                    flags,
+                    disposition=disposition,
+                    parser=parser_name,
+                    parser_version=parser_version,
+                    parser_config_hash=config_hash,
+                )
+            )
+    return ParsedDocument(
+        pages,
+        hashlib.sha256(data).hexdigest(),
+        parser_name,
+        parser_version,
+        config_hash,
+    )
+
+
+def _parse_liteparse(data: bytes) -> ParsedDocument:
+    from liteparse import LiteParse
+
+    native_options = {
+        "ocr_enabled": False,
+        "output_format": "text",
+        "quiet": True,
+        "include_complexity": True,
+        "extract_blocks": True,
+        "extract_text_metadata": True,
+        "emit_word_boxes": True,
+        "pool_size": max(1, settings.parser_pool_size),
+        "parse_timeout": max(1, settings.parser_timeout_seconds),
+    }
+    native_parser = LiteParse(**native_options)
+    try:
+        native_parser.warm_up()
+        result = native_parser.parse(data)
+    finally:
+        native_parser.close()
+
+    ocr_numbers: list[int] = []
+    if settings.local_ocr_enabled:
+        for page in result.pages:
+            complexity = page.complexity
+            reasons = list(complexity.reasons if complexity else [])
+            if requires_local_ocr(
+                reasons,
+                native_text_length=len(page.text.strip()),
+                is_garbled=bool(complexity and complexity.is_garbled),
+            ):
+                ocr_numbers.append(page.page_num)
+    ocr_pages = _liteparse_ocr_pages(data, ocr_numbers)
+    parser_version = _package_version("liteparse")
+    config = {
+        "backend": "liteparse",
+        "version": parser_version,
+        "pool_size": settings.parser_pool_size,
+        "timeout_seconds": settings.parser_timeout_seconds,
+        "local_ocr_enabled": settings.local_ocr_enabled,
+        "ocr_language": settings.local_ocr_language,
+        "ocr_dpi": settings.local_ocr_dpi,
+        "ocr_slice_pages": settings.local_ocr_slice_pages,
+    }
+    config_hash = _parser_config_hash("liteparse", config)
+    pages: list[ParsedPage] = []
+    for native_page in result.pages:
+        page = ocr_pages.get(native_page.page_num) or native_page
+        locally_ocrd = native_page.page_num in ocr_pages and bool(page.text.strip())
+        was_candidate = native_page.page_num in ocr_numbers
+        disposition = (
+            "local-ocr"
+            if locally_ocrd
+            else "vision-required"
+            if was_candidate
+            else "native"
+        )
+        text, blocks = _liteparse_layout(page, native_page.page_num)
+        words = _liteparse_words(page)
+        reasons = list(
+            native_page.complexity.reasons if native_page.complexity else []
+        )
+        flags = [f"complexity:{reason}" for reason in reasons]
+        if len(text.strip()) < 80:
+            flags.append("low-native-text")
+        if not words:
+            flags.append("no-word-geometry")
+        if locally_ocrd:
+            flags.append("local-ocr")
+        score = 0.96
+        if disposition == "local-ocr":
+            score = 0.82
+        elif disposition == "vision-required":
+            score = 0.35
+        page_parser = "liteparse-local-ocr" if locally_ocrd else "liteparse"
+        pages.append(
+            ParsedPage(
+                index=native_page.page_num - 1,
+                width=float(page.width),
+                height=float(page.height),
+                text=text,
+                words=words,
+                quality_score=score,
+                flags=flags,
+                blocks=blocks,
+                disposition=disposition,
+                parser=page_parser,
+                parser_version=parser_version,
+                parser_config_hash=config_hash,
+            )
+        )
+    return ParsedDocument(
+        pages,
+        hashlib.sha256(data).hexdigest(),
+        "liteparse",
+        parser_version,
+        config_hash,
+    )
+
+
+def _liteparse_ocr_pages(data: bytes, page_numbers: list[int]) -> dict[int, Any]:
+    if not page_numbers:
+        return {}
+    from liteparse import LiteParse
+
+    recovered: dict[int, Any] = {}
+    slice_size = max(1, settings.local_ocr_slice_pages)
+    for start in range(0, len(page_numbers), slice_size):
+        page_slice = page_numbers[start : start + slice_size]
+        parser = LiteParse(
+            ocr_enabled=True,
+            ocr_language=settings.local_ocr_language,
+            target_pages=",".join(str(number) for number in page_slice),
+            dpi=max(72, settings.local_ocr_dpi),
+            output_format="text",
+            quiet=True,
+            num_workers=max(1, min(settings.local_ocr_workers, len(page_slice))),
+            emit_word_boxes=True,
+            extract_blocks=True,
+            continue_on_page_error=True,
+            pool_size=1,
+            parse_timeout=max(1, settings.parser_timeout_seconds),
+        )
+        try:
+            parser.warm_up()
+            parsed = parser.parse(data)
+            recovered.update(
+                {
+                    page.page_num: page
+                    for page in parsed.pages
+                    if page.text and page.text.strip()
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - an OCR slice may fail independently
+            # Unrecovered pages remain explicitly vision-required.
+            logger.warning("LiteParse OCR failed for pages %s: %s", page_slice, exc)
+            continue
+        finally:
+            parser.close()
+    return recovered
+
+
+def _liteparse_words(page: Any) -> list[dict[str, Any]]:
+    words: list[dict[str, Any]] = []
+    for item in page.text_items or []:
+        for word in item.words or []:
+            words.append(
+                {
+                    "text": str(word.text),
+                    "x0": float(word.x),
+                    "top": float(word.y),
+                    "x1": float(word.x + word.width),
+                    "bottom": float(word.y + word.height),
+                }
+            )
+    return words
+
+
+def _liteparse_layout(page: Any, page_number: int) -> tuple[str, list[ParsedBlock]]:
+    parts: list[str] = []
+    blocks: list[ParsedBlock] = []
+    for index, block in enumerate(page.blocks or []):
+        block_text = _liteparse_block_text(block).strip()
+        if not block_text:
+            continue
+        if parts:
+            parts.append("\n\n")
+        start = sum(len(part) for part in parts)
+        parts.append(block_text)
+        end = start + len(block_text)
+        blocks.append(
+            ParsedBlock(
+                id=str(block.id or f"p{page_number}-b{index}"),
+                kind=str(block.kind or "text"),
+                text=block_text,
+                bbox=_liteparse_bbox(block.bbox),
+                start=start,
+                end=end,
+            )
+        )
+    text = "".join(parts)
+    return (text or str(page.text or ""), blocks)
+
+
+def _liteparse_block_text(block: Any) -> str:
+    if block.text:
+        return str(block.text)
+    if block.lines:
+        return "\n".join(str(line) for line in block.lines)
+    rows: list[str] = []
+    if block.header:
+        rows.append(" | ".join(str(cell.text) for cell in block.header))
+    rows.extend(
+        " | ".join(str(cell.text) for cell in row) for row in (block.rows or [])
+    )
+    return "\n".join(rows)
+
+
+def _liteparse_bbox(rect: Any) -> list[float] | None:
+    if rect is None:
+        return None
+    return [
+        float(rect.x),
+        float(rect.y),
+        float(rect.x + rect.width),
+        float(rect.y + rect.height),
+    ]
+
+
+def _package_version(package: str) -> str:
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _parser_config_hash(backend: str, config: dict[str, Any]) -> str:
+    payload = json.dumps(
+        {"backend": backend, **config}, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
 def evidence_for(page: ParsedPage, start: int, end: int, excerpt: str) -> dict[str, Any]:
     normalized = re.sub(r"\s+", " ", excerpt).strip()
-    match_words = [word for word in page.words if normalized[:24].lower() in word.get("text", "").lower()]
-    bbox = None
-    if match_words:
+    overlapping_blocks = [
+        block for block in page.blocks if block.start < end and start < block.end
+    ]
+    bbox = _union_bbox([block.bbox for block in overlapping_blocks])
+    match_tokens = set(re.findall(r"[a-z0-9]+", normalized.casefold())[:12])
+    match_words = [
+        word
+        for word in page.words
+        if str(word.get("text") or "").casefold() in match_tokens
+    ]
+    if bbox is None and match_words:
         bbox = [
             min(float(word["x0"]) for word in match_words),
             min(float(word["top"]) for word in match_words),
@@ -79,9 +383,21 @@ def evidence_for(page: ParsedPage, start: int, end: int, excerpt: str) -> dict[s
         "end": end,
         "bbox": bbox,
         "precision": "word-region" if bbox else "page-only",
-        "parser": "pdfplumber",
+        "parser": page.parser,
         "quality_flags": page.flags,
     }
+
+
+def _union_bbox(boxes: list[list[float] | None]) -> list[float] | None:
+    present = [box for box in boxes if box is not None]
+    if not present:
+        return None
+    return [
+        min(box[0] for box in present),
+        min(box[1] for box in present),
+        max(box[2] for box in present),
+        max(box[3] for box in present),
+    ]
 
 
 def _printed_page(text: str) -> str | None:

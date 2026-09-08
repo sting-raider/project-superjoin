@@ -34,7 +34,7 @@ The implementation is one FastAPI process with a SQLite WAL database and a stati
 ## Why these technologies
 
 - **SQLite** supplies transactions, foreign keys, WAL, and FTS5 without a service dependency. Stored normalized vectors are scanned with NumPy only over the bounded workspace population. A normal query can use one cached, budgeted embedding against an active space; there is no claim of ANN performance.
-- **pdfplumber** is the current compatible primary parser because the local smoke comparison found comparable native text output while PyMuPDF's AGPL/commercial licensing is unresolved for distribution. The benchmark harness and decision are documented in [`PARSER_SELECTION.md`](PARSER_SELECTION.md); a full source-verified corpus comparison remains an explicit evidence task.
+- **LiteParse 2.14.4** is the primary parser after a measured 169-page comparison. It provides native text, classified layout/table blocks, word geometry, and complexity signals. Selective local OCR runs only for unusable native text layers; pdfplumber is the fallback and pypdfium2 renders the final vision-required pages. The decision and measurements are documented in [`PARSER_SELECTION.md`](PARSER_SELECTION.md).
 - **FastAPI/Pydantic** keeps the API contract typed and exposes OpenAPI automatically. Provider calls use a small OpenAI-compatible adapter instead of a framework that hides prompts, retries, or budgets.
 - **React/Vite** keeps the evaluator path fast and static. The UI is intentionally an evidence inspector and review workspace rather than a chatbot. The main interaction is a dense facts table with an adjacent evidence/trust panel.
 

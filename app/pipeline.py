@@ -103,14 +103,28 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
             raise ValueError(f"PDF exceeds the {settings.max_pdf_pages}-page limit")
         _update_document(document_id, page_count=len(parsed.pages), parser=parsed.parser, quality_score=sum(p.quality_score for p in parsed.pages) / max(len(parsed.pages), 1), status="processing")
         _persist_pages(document_id, parsed)
-        _finish_stage(run_id, "parse", {"pages": len(parsed.pages)})
+        dispositions = {
+            name: sum(page.disposition == name for page in parsed.pages)
+            for name in ("native", "local-ocr", "vision-required")
+        }
+        _finish_stage(
+            run_id,
+            "parse",
+            {
+                "pages": len(parsed.pages),
+                "parser": parsed.parser,
+                "parser_version": parsed.parser_version,
+                "parser_config_hash": parsed.parser_config_hash,
+                "page_dispositions": dispositions,
+            },
+        )
         _raise_if_cancelled(run_id)
         all_candidates: list[dict[str, Any]] = []
         visual_pages: list[int] = []
         for page in parsed.pages:
             _raise_if_cancelled(run_id)
             all_candidates.extend(candidate_claims(page))
-            if "low-native-text" in page.flags or "no-word-geometry" in page.flags:
+            if page.disposition == "vision-required":
                 visual_pages.append(page.index)
         if visual_pages:
             _start_stage(
@@ -251,18 +265,41 @@ def build_extraction_batches(
     max_chars = max(1000, settings.extraction_batch_chars)
     sections: list[dict[str, Any]] = []
     for page in pages:
-        text = str(page.text or "")
-        for section_index, start in enumerate(range(0, len(text), max_chars)):
-            section = text[start : start + max_chars]
-            if section.strip():
+        section_index = 0
+        sources = page.blocks or [
+            type(
+                "PageBlock",
+                (),
+                {
+                    "id": f"p{page.index + 1}-page",
+                    "kind": "page",
+                    "text": str(page.text or ""),
+                    "bbox": None,
+                    "start": 0,
+                },
+            )()
+        ]
+        for block in sources:
+            text = str(block.text or "")
+            for local_start in range(0, len(text), max_chars):
+                section = text[local_start : local_start + max_chars]
+                if not section.strip():
+                    continue
                 sections.append(
                     {
                         "pdf_page": page.index + 1,
                         "section": section_index,
-                        "start": start,
+                        "block_id": block.id,
+                        "kind": block.kind,
+                        "start": int(block.start) + local_start,
+                        "bbox": block.bbox,
+                        "parser": page.parser,
+                        "parser_version": page.parser_version,
+                        "parser_config_hash": page.parser_config_hash,
                         "text": section,
                     }
                 )
+                section_index += 1
     batches: list[ExtractionBatch] = []
     current: list[dict[str, Any]] = []
     current_chars = 0
@@ -405,6 +442,9 @@ def _extract_document_batches(
                 claims,
             )
         else:
+            claims = _validated_grounded_claims(
+                claims, batch.candidates, batch.pages
+            )
             _checkpoint_batch(
                 document_id,
                 run_id,
@@ -478,6 +518,9 @@ def _extract_document_batches(
                     claims,
                 )
             else:
+                claims = _validated_grounded_claims(
+                    claims, batch.candidates, batch.pages
+                )
                 unresolved_indices.discard(batch.index)
                 _checkpoint_batch(
                     document_id,
@@ -753,10 +796,31 @@ def _validated_grounded_claims(
             evidence_page = int(evidence_page) if evidence_page is not None else None
         except (TypeError, ValueError):
             evidence_page = None
+        grounded_source = _grounded_source(
+            _model_scalar(evidence_text, 500), evidence_page, source_pages
+        )
         item["evidence"] = {
             "text": _model_scalar(evidence_text, 500),
             "pdf_page": evidence_page,
         }
+        if grounded_source and (
+            grounded_source.get("block_id") or grounded_source.get("parser")
+        ):
+            item["evidence"].update(
+                {
+                    "kind": grounded_source.get("kind", "text"),
+                    "start": grounded_source.get("start"),
+                    "end": int(grounded_source.get("start") or 0)
+                    + len(_model_scalar(evidence_text, 500)),
+                    "bbox": grounded_source.get("bbox"),
+                    "precision": (
+                        "block-region"
+                        if grounded_source.get("bbox")
+                        else "page-only"
+                    ),
+                    "parser": grounded_source.get("parser"),
+                }
+            )
         for key, limit in (
             ("subject", 240),
             ("predicate", 240),
@@ -778,6 +842,23 @@ def _validated_grounded_claims(
         ):
             valid.append(item)
     return valid
+
+
+def _grounded_source(
+    evidence_text: str,
+    evidence_page: int | None,
+    source_pages: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    needle = " ".join(evidence_text.split()).casefold()
+    if not needle:
+        return None
+    for source in source_pages:
+        if evidence_page is not None and int(source.get("pdf_page") or -1) != evidence_page:
+            continue
+        haystack = " ".join(str(source.get("text") or "").split()).casefold()
+        if needle in haystack:
+            return source
+    return None
 
 
 def _model_scalar(value: Any, limit: int) -> str:

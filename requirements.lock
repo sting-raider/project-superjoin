@@ -10,6 +10,7 @@ fastapi==0.141.1
 h11==0.16.0
 httptools==0.8.0
 idna==3.19
+liteparse==2.14.4
 numpy==2.5.3
 openpyxl==3.1.5
 pdfminer.six==20251230

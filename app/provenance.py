@@ -37,8 +37,8 @@ def persist_page_artifacts(conn: Any, document_id: str, parsed: Any) -> None:
         number = page.index + 1
         conn.execute(
             """INSERT OR IGNORE INTO page_artifacts
-            (id,document_id,page_number,width,height,native_text,parser,parser_version,quality_score,quality_flags_json,disposition,created_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (id,document_id,page_number,width,height,native_text,parser,parser_version,parser_config_hash,quality_score,quality_flags_json,disposition,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 page_artifact_id(document_id, number),
                 document_id,
@@ -46,26 +46,28 @@ def persist_page_artifacts(conn: Any, document_id: str, parsed: Any) -> None:
                 page.width,
                 page.height,
                 page.text,
-                parsed.parser,
-                parsed.parser_version,
+                page.parser or parsed.parser,
+                page.parser_version or parsed.parser_version,
+                page.parser_config_hash or parsed.parser_config_hash,
                 page.quality_score,
                 json.dumps(page.flags),
-                "visual-review" if "low-native-text" in page.flags or "no-word-geometry" in page.flags else "native",
+                page.disposition,
                 utc_now(),
             ),
         )
         conn.execute(
-            """UPDATE page_artifacts SET width=?,height=?,native_text=?,parser=?,parser_version=?,quality_score=?,quality_flags_json=?,disposition=?
+            """UPDATE page_artifacts SET width=?,height=?,native_text=?,parser=?,parser_version=?,parser_config_hash=?,quality_score=?,quality_flags_json=?,disposition=?
             WHERE id=?""",
             (
                 page.width,
                 page.height,
                 page.text,
-                parsed.parser,
-                parsed.parser_version,
+                page.parser or parsed.parser,
+                page.parser_version or parsed.parser_version,
+                page.parser_config_hash or parsed.parser_config_hash,
                 page.quality_score,
                 json.dumps(page.flags),
-                "visual-review" if "low-native-text" in page.flags or "no-word-geometry" in page.flags else "native",
+                page.disposition,
                 page_artifact_id(document_id, number),
             ),
         )

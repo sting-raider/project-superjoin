@@ -119,8 +119,11 @@ link is the [public redacted walkthrough](https://github.com/sting-raider/projec
 
 ## Approach
 
-The ingestion pipeline parses each page, records parser/version and quality
-flags, creates stable evidence anchors, extracts source claims, and writes
+The ingestion pipeline uses LiteParse for fast local native text, classified
+layout blocks, tables, and word geometry. It runs bounded local OCR only for
+pages with an unusable text layer and reserves provider vision for pages OCR
+cannot recover. It records parser/version/config identity and quality flags,
+creates stable evidence anchors, extracts source claims, and writes
 versioned interpretations. Deterministic normalization handles units, Indian
 number scales, percentages, ranges, bounds, fiscal periods, and data-vintage
 qualifiers. A bounded exact-context relationship lane identifies corroboration,
@@ -152,7 +155,8 @@ the governing implementation and acceptance plan.
 ## Limitations and Next Steps
 
 The repository currently ships a compact recorded demo rather than third-party
-source PDFs. The parser comparison and bounded NVIDIA NIM extraction/embedding
+source PDFs. The adopted 169-page LiteParse comparison and bounded live
+DeepSeek extraction/NVIDIA embedding
 selection reports are included as measured development evidence; they use
 small synthetic or locally supplied inputs and do not claim full-corpus quality.
 A broader provider comparison and source-cleared video require additional

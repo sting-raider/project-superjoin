@@ -16,7 +16,8 @@ def test_parser_benchmark_fixtures_cover_native_layout_and_scan(tmp_path) -> Non
     assert len(tables.pages) == 8
     assert len(scanned.pages) == 3
     assert all(page.text.strip() for page in narrative.pages + columns.pages + tables.pages)
-    assert all(not page.text.strip() for page in scanned.pages)
+    assert all(page.text.strip() for page in scanned.pages)
+    assert all(page.disposition == "local-ocr" for page in scanned.pages)
     assert STRONG_OCR_REASONS == {"no-text", "garbled", "vector-text", "scanned"}
 
 

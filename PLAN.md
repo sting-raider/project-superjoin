@@ -158,7 +158,7 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   not the six-document starter corpus) found equivalent native character counts
   for pdfplumber and PyMuPDF. PyMuPDF was substantially faster in that smoke
   run, but its AGPL/commercial licensing remains unresolved for runtime use;
-  therefore pdfplumber remains the compatible primary parser pending the full
+  therefore pdfplumber remained the compatible primary parser pending a fuller
   source-verified 20-page comparison. The reproducible harness and report are
   `scripts/benchmark_parsers.py`, `docs/PARSER_SELECTION.md`, and
   `evals/reports/parser-smoke.json`. This is not presented as the 511-page
@@ -167,8 +167,18 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   prepared starter PDF. PyMuPDF is substantially faster with comparable native
   text counts, but its AGPL/commercial license remains unsuitable as the
   default runtime dependency. The measured report is
-  `evals/reports/parser-six-document.json`; pdfplumber remains the compatible
-  primary parser and pypdfium2 remains the bounded renderer.
+  `evals/reports/parser-six-document.json`; this was superseded by the adopted
+  LiteParse comparison below.
+- A source-blind seven-document comparison now covers 169 pages, including the
+  1/27/100-page latency inputs and unseen narrative, multicolumn, table-heavy,
+  and scanned fixtures. LiteParse parsed them in 3.17 seconds versus 60.30
+  seconds for pdfplumber, with an 89 MB versus 1.26 GB maximum RSS delta.
+  Classified block text preserved the native source content without the raw
+  spatial-text duplication. LiteParse 2.14.4 is therefore the primary runtime
+  parser; pdfplumber is the configurable/automatic fallback. Native parse runs
+  first, selective local OCR handles only unusable text layers in bounded
+  slices, and unrecovered pages become `vision-required`. The evidence is in
+  `evals/reports/liteparse-backend-benchmark.json`.
 - The runtime already records parser/version, page quality flags, evidence
   anchors, and visual-review dispositions so the full corpus comparison can be
   run without changing the claim contract.
@@ -430,8 +440,8 @@ flowchart TD
 | Backend | Python 3.12, FastAPI, Pydantic 2, Uvicorn | Clear typed contracts and strong PDF/data tooling |
 | Persistence | SQLite, WAL mode, foreign keys, FTS5 | Transactions, lexical search, simple deployment |
 | Database access | `sqlite3` with explicit schema initializer and additive upgrades | Visible SQL, WAL transactions, and no second ORM/migration service for a one-container tool |
-| Native PDF stack | Benchmark PyMuPDF against pypdfium2 + pdfplumber; selection rule below | Choose quality and coordinate consistency using starter evidence |
-| Table/layout fallback | pdfplumber only where it measurably improves the selected primary stack | Avoid mandatory duplicate parsing |
+| Native PDF stack | LiteParse 2.14.4 primary; pdfplumber fallback; pypdfium2 vision renderer | Measured 19x parsing speedup, lower memory, permissive license, layout blocks and word geometry |
+| Table/layout | LiteParse classified blocks and table cells | Preserve reading order and geometry without parsing every page twice |
 | Model transport | `httpx.AsyncClient` with OpenAI-compatible request adapters | Configurable endpoints without a large orchestration framework |
 | Vector computation | NumPy over persisted, normalized float32 vectors | Portable, inspectable exact search over bounded candidate populations |
 | Frontend | React 19, Vite, compact JSX client | Small static application; server rendering and a framework router add no value here |
@@ -445,27 +455,29 @@ flowchart TD
 
 SQLite supplies FTS5 and BM25 ranking. A separate search service is unnecessary for the submission’s measured scale. [SQLite FTS5 documentation](https://www.sqlite.org/fts5.html)
 
-### Native parser selection
+### Native parser selection (resolved)
 
-Before locking the ingestion implementation, run a bounded local comparison on at least 20 representative/difficult starter pages, spanning all six PDFs, plus native text extraction timings across the 511 pages.
+The final comparison used the same 169 pages for both backends: three latency
+documents plus four source-blind layout/OCR fixtures. It measured native text,
+geometry, classified blocks and tables, OCR routing, runtime, and peak RSS.
 
-Compare:
+The earlier PyMuPDF comparison remains useful historical evidence, but its
+AGPL/commercial distribution question and the stronger LiteParse layout
+contract make it unnecessary in the runtime.
 
-- PyMuPDF native text, words/blocks, rendering, and built-in table extraction.
-- pypdfium2 native inspection/rendering with pdfplumber layout/table extraction.
-- PyMuPDF plus pdfplumber on the specific regions where the latter repairs an observed error.
+- LiteParse is the primary backend.
+- pdfplumber is a configurable and automatic fallback for parser failures.
+- pypdfium2 renders only pages that remain `vision-required` after local OCR.
 
-Measure source-text fidelity, row/column value association, evidence geometry, reading order, page-label/spread handling, runtime, and peak memory. Use the same source-verified regions and output contract, not different inputs or model-assisted corrections.
+Native parsing always precedes OCR. Only scanned/no-text, garbled, or nearly
+empty vector-text pages enter bounded local OCR. Sparse text and embedded
+images alone do not justify OCR. Layout blocks carry page, kind, offsets,
+bounding box, parser version, and parser config hash into extraction and cache
+identity.
 
-Prefer PyMuPDF as the single primary stack if it has no critical grounding/table regression and comparable source-verified accuracy (within two percentage points), with acceptable performance and licensing. Retain pdfplumber only for a documented failure class where it corrects at least one verified error without introducing another; route it selectively, never parse every page twice by default.
-
-Normalize every backend’s output to one documented page coordinate system with explicit rotation/crop transforms and offset mappings. Do not assume matching text offsets between parsers. Preserve the backend/version on artifacts.
-
-PyMuPDF provides word/block extraction and coordinates; pypdfium2 explicitly does not provide word/line/paragraph layout analysis. [PyMuPDF text extraction](https://pymupdf.readthedocs.io/en/latest/app1.html), [pypdfium2 API](https://pypdfium2.readthedocs.io/en/stable/python_api.html)
-
-PyMuPDF is available under AGPL or commercial licensing. Record the dependency/project-license implications before selecting it for distribution; do not buy a commercial license or silently impose a new project license. If its distribution terms do not fit the project’s approved licensing, retain the original compatible stack and document the tradeoff. [PyMuPDF licensing](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright)
-
-Pin dependency versions and image digests during bootstrap; lock the winning parser dependencies after this comparison. Remove unused runtime parsers.
+Every backend is normalized to top-left PDF-page coordinates, and artifacts
+preserve backend/version/config identity. LiteParse is pinned in the runtime;
+the benchmark-only PyMuPDF dependency is excluded from distribution.
 
 ### Explicitly removed overengineering
 
@@ -1577,7 +1589,7 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] Demo data was generated by the pipeline; replay is explicitly labeled.
 - [x] A never-seen PDF processes through a configured compatible endpoint.
 - [x] Extraction, reasoning, vision, and embeddings can be configured independently without code changes.
-- [x] Development comparisons select the parser, extractor, and embedding configuration with measured evidence and licensing/endpoint checks; the live selection uses the requested NIM extractor, a native 2048-dimensional NIM embedder, and lexical fallback when no provider is configured, with small-fixture limitations recorded.
+- [x] Development comparisons select the parser, extractor, and embedding configuration with measured evidence and licensing/endpoint checks; LiteParse 2.14.4 is the selected native parser, DeepSeek V4 Flash is the configured live extractor/reasoner, NVIDIA NIM supplies embeddings, and lexical fallback remains available without a provider.
 - [x] Every canonical supporting claim has valid, inspectable evidence.
 - [x] All four assignment cases are accessible in one click.
 - [x] Numeric and semantic temporal cases both work.
