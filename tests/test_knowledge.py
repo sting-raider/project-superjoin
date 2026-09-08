@@ -163,7 +163,7 @@ def test_confirmed_registry_aliases_share_reasoning_and_fact_family(tmp_path: Pa
                     """INSERT INTO claims
                     (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,period,modality,scope,evidence_json,created_at)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (claim_id, "w", f"d{index}", subject, predicate, "$10 million", "10000000", "money", "USD", "FY2026", "actual", "consolidated", evidence, now),
+                    (claim_id, "w", f"d{index}", subject, predicate, "$10 million", "10000000" if index == 1 else "10", "money", "USD", "FY2026", "actual", "consolidated", evidence, now),
                 )
                 conn.execute(
                     """INSERT INTO claim_interpretations

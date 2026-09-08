@@ -65,6 +65,8 @@ def assess_relationships(
         rows = conn.execute(
             """SELECT c.*,ci.entity_id,ci.predicate_id,
             ci.period AS resolved_period,ci.modality AS resolved_modality,
+            ci.normalized_value AS resolved_value,ci.value_type AS resolved_value_type,
+            ci.unit AS resolved_unit,
             e.canonical_name,p.key AS canonical_predicate
             FROM claims c JOIN documents d ON d.id=c.document_id
             LEFT JOIN claim_interpretations ci ON ci.claim_id=c.id
@@ -91,6 +93,9 @@ def assess_relationships(
         claim["predicate"] = claim["canonical_predicate"] or claim["predicate"]
         claim["period"] = claim["resolved_period"] or claim["period"]
         claim["modality"] = claim["resolved_modality"] or claim["modality"]
+        claim["normalized_value"] = claim["resolved_value"] if claim["resolved_value"] is not None else claim["normalized_value"]
+        claim["value_type"] = claim["resolved_value_type"] or claim["value_type"]
+        claim["unit"] = claim["resolved_unit"] or claim["unit"]
         claims.append(claim)
     groups: dict[tuple[str, str], list[Any]] = {}
     for claim in claims:
@@ -312,6 +317,8 @@ def rebuild_workspace(
         claims = conn.execute(
             """SELECT c.*,ci.entity_id,ci.predicate_id,
             ci.period AS resolved_period,ci.modality AS resolved_modality,
+            ci.normalized_value AS resolved_value,ci.value_type AS resolved_value_type,
+            ci.unit AS resolved_unit,
             e.canonical_name,p.key AS canonical_predicate
             FROM claims c JOIN documents d ON d.id=c.document_id
             LEFT JOIN claim_interpretations ci ON ci.claim_id=c.id
@@ -345,6 +352,9 @@ def rebuild_workspace(
             claim = dict(claim)
             claim["period"] = period
             claim["modality"] = modality
+            claim["normalized_value"] = claim["resolved_value"] if claim["resolved_value"] is not None else claim["normalized_value"]
+            claim["value_type"] = claim["resolved_value_type"] or claim["value_type"]
+            claim["unit"] = claim["resolved_unit"] or claim["unit"]
             groups[key][-1] = claim
             identities[key] = (subject, predicate)
         active_fact_ids: set[str] = set()
