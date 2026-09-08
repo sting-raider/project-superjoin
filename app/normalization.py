@@ -146,21 +146,42 @@ def parse_period(text: str) -> str | None:
 
 
 def normalize_period_label(value: str | None) -> str | None:
-    """Canonicalize common fiscal labels without inventing missing context."""
+    """Canonicalize explicit fiscal-year spellings to their start/end identity.
+
+    ``FY26`` conventionally names the fiscal year ending in 2026, while
+    ``FY2025/26`` and ``2025-26`` spell out the same interval.  Keeping the
+    complete interval prevents the former from being confused with
+    ``FY2026/27`` and makes cross-source comparisons deterministic.
+    """
 
     if value is None or not str(value).strip():
         return None
-    compact = re.sub(r"\s+", "", str(value).upper())
-    match = re.fullmatch(r"FY(\d{2})", compact)
-    if match:
-        return f"FY20{match.group(1)}"
-    match = re.fullmatch(r"Q([1-4])FY(\d{2})", compact)
-    if match:
-        return f"Q{match.group(1)}FY20{match.group(2)}"
-    return compact if re.fullmatch(r"(?:FY20\d{2}(?:/\d{2})?|Q[1-4]FY20\d{2}|20\d{2}/\d{2})", compact) else str(value).strip()
+    compact = re.sub(r"\s+", "", str(value).upper()).replace("–", "-").replace("—", "-")
+    quarter = ""
+    quarter_match = re.match(r"Q([1-4])", compact)
+    if quarter_match:
+        quarter = f"Q{quarter_match.group(1)}"
+        compact = compact[quarter_match.end() :]
+    compact = compact.removeprefix("FY")
+    short = re.fullmatch(r"(\d{2})", compact)
+    if short:
+        end_year = 2000 + int(short.group(1))
+        return f"{quarter}FY{end_year - 1}/{end_year % 100:02d}"
+    single = re.fullmatch(r"(20\d{2})", compact)
+    if single:
+        end_year = int(single.group(1))
+        return f"{quarter}FY{end_year - 1}/{end_year % 100:02d}"
+    interval = re.fullmatch(r"(20\d{2})[-/](\d{2}|20\d{2})", compact)
+    if interval:
+        start_year = int(interval.group(1))
+        raw_end = interval.group(2)
+        end_year = int(raw_end) if len(raw_end) == 4 else (start_year // 100) * 100 + int(raw_end)
+        if end_year == start_year + 1:
+            return f"{quarter}FY{start_year}/{end_year % 100:02d}"
+    return str(value).strip()
 
 
-def normalize_modality(value: str | None) -> str | None:
+def normalize_modality(value: str | None, evidence_text: str | None = None) -> str | None:
     """Map provider wording to a small, explainable source-context taxonomy."""
 
     if value is None or not str(value).strip():
@@ -176,7 +197,21 @@ def normalize_modality(value: str | None) -> str | None:
         "forecasted": "forecast",
         "mandatory": "required",
     }
-    return aliases.get(key, key)
+    normalized = aliases.get(key, key)
+    # Providers sometimes return a generic assertion label even though the
+    # cited sentence states a more precise forecast or estimate status.  The
+    # source wording is authoritative in that narrow case.
+    if normalized in {"reported", "observed"} and evidence_text:
+        evidence = re.sub(r"\s+", " ", evidence_text.casefold())
+        if re.search(r"\b(?:first advance estimate|initial estimate)\b", evidence):
+            return "first_estimate"
+        if re.search(r"\b(?:second advance estimate|revised estimate|updated estimate)\b", evidence):
+            return "revised_estimate"
+        if re.search(r"\b(?:forecast(?:ed)?|project(?:ed|ion)|expected to)\b", evidence):
+            return "forecast"
+        if re.search(r"\b(?:estimate|estimated|preliminary)\b", evidence):
+            return "estimated"
+    return normalized
 
 
 def parse_interval(text: str) -> dict[str, str | None]:

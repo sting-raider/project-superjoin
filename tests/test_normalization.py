@@ -36,8 +36,11 @@ def test_parenthetical_negative() -> None:
 def test_fiscal_periods_are_stable() -> None:
     assert parse_period("for the year ended March 31, 2024") == "FY2024"
     assert parse_period("FY 2025/26 projection") == "FY2025/26"
-    assert normalize_period_label("FY24") == "FY2024"
-    assert normalize_period_label("Q1 FY 23") == "Q1FY2023"
+    assert normalize_period_label("FY24") == "FY2023/24"
+    assert normalize_period_label("Q1 FY 23") == "Q1FY2022/23"
+    for spelling in ("FY26", "FY2025-26", "FY2025/26", "2025-26", "2025/26", "2025–26"):
+        assert normalize_period_label(spelling) == "FY2025/26"
+    assert normalize_period_label("FY2026/27") == "FY2026/27"
     assert normalize_period_label("nine months ended December 31, 2024") == "nine months ended December 31, 2024"
 
 
@@ -46,6 +49,9 @@ def test_source_modalities_have_a_stable_generic_vocabulary() -> None:
     assert normalize_modality("actual") == "reported"
     assert normalize_modality("projected") == "forecast"
     assert normalize_modality("management_guidance") == "management_guidance"
+    assert normalize_modality("asserted", "Demand is projected at 42 units next year.") == "forecast"
+    assert normalize_modality("reported", "The first advance estimate is 42 units.") == "first_estimate"
+    assert normalize_modality("asserted", "The second advance estimate is 43 units.") == "revised_estimate"
 
 
 def test_rounding_comparison_is_explicit() -> None:

@@ -668,8 +668,8 @@ def _visual_only_evidence(value: str | None) -> bool:
 def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]:
     period_a = normalize_period_label(a["period"])
     period_b = normalize_period_label(b["period"])
-    modality_a = normalize_modality(a["modality"])
-    modality_b = normalize_modality(b["modality"])
+    modality_a = normalize_modality(a["modality"], _relationship_evidence_text(a))
+    modality_b = normalize_modality(b["modality"], _relationship_evidence_text(b))
     dimensions = {
         "subject": "MATCH" if a["subject"].lower() == b["subject"].lower() else "DIFFERENT",
         "predicate": "MATCH" if a["predicate"].lower() == b["predicate"].lower() else "DIFFERENT",
@@ -692,3 +692,10 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
     if modality_a != modality_b:
         return "RECONCILES", "The claims use different modalities or data vintages.", dimensions, 0.86
     return "CONTRADICTS", "Same subject, predicate, period, and modality with incompatible values.", dimensions, 0.84
+
+
+def _relationship_evidence_text(claim: Any) -> str:
+    return " ".join(
+        str(item.get("text") or "")
+        for item in _evidence_items(claim.get("evidence_json"))
+    )

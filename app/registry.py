@@ -234,6 +234,16 @@ def _register_workspace_claims(
             ORDER BY c.created_at,c.id""",
             (workspace_id,),
         ).fetchall()
+        def evidence_text(row: Any) -> str:
+            try:
+                value = json.loads(row["evidence_json"] or "{}")
+            except json.JSONDecodeError:
+                return ""
+            items = value if isinstance(value, list) else [value]
+            return " ".join(
+                str(item.get("text") or "") for item in items if isinstance(item, dict)
+            )
+
         rows = [
             row for row in rows
             if row["entity_status"] != "resolved"
@@ -242,7 +252,8 @@ def _register_workspace_claims(
                 row["predicate"], row["period"], row["modality"]
             )
             or row["interpretation_period"] != normalize_period_label(row["period"])
-            or row["interpretation_modality"] != normalize_modality(row["modality"])
+            or row["interpretation_modality"]
+            != normalize_modality(row["modality"], evidence_text(row))
         ]
         entity_candidates = [
             dict(row)
@@ -383,7 +394,7 @@ def _register_workspace_claims(
                     predicate.get("id"),
                     predicate_source,
                     normalize_period_label(row["period"]),
-                    normalize_modality(row["modality"]),
+                    normalize_modality(row["modality"], evidence_text(row)),
                     entity.get("relation"),
                     predicate.get("relation"),
                     row["id"],
