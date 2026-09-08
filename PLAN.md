@@ -1530,7 +1530,7 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] Human decisions are immutable/auditable, revocable, and invalidated appropriately by new evidence.
 - [x] Duplicate ingestion makes no paid calls; incremental ingestion preserves previous work.
 - [x] Crash/resume, cancellation, and transactional publication pass.
-- [x] Gold evaluation and mandatory performance reports contain measured results and limitations; comparative provider-quality selection remains explicitly pending, while the recorded NIM smoke is labeled compatibility evidence only.
+- [x] Gold evaluation and mandatory performance reports contain measured results and limitations; the bounded NIM development selection is recorded, while broader full-corpus provider-quality validation remains explicitly pending.
 - [x] Any unrun 1,000-page/50,000-claim benchmarks are labeled accurately and do not block the finished core submission.
 - [x] Cumulative paid API usage remains within US$20.
 - [x] Relevant tests, type checks, accessibility checks, and clean-build checks pass.
