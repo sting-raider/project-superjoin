@@ -15,6 +15,7 @@ from app.pipeline import (
     _extract_visual_pages,
     _insert_claims,
     _model_extract,
+    _recover_uncovered_pages,
     _RunCancelled,
     _validated_grounded_claims,
     _vision_extract_page,
@@ -91,6 +92,51 @@ def test_candidate_hints_are_compact_and_do_not_repeat_evidence() -> None:
         }
     ]
     assert evidence_text not in str(hints)
+
+
+def test_uncovered_high_signal_page_gets_bounded_semantic_recovery(monkeypatch) -> None:
+    batch = ExtractionBatch(
+        index=0,
+        pages=[
+            {"pdf_page": 31, "section": 0, "text": "Northstar output reached 42 units."},
+            {"pdf_page": 32, "section": 0, "text": "Borealis utilization reached 81 percent."},
+            {"pdf_page": 33, "section": 0, "text": "Orion churn reached 4 percent."},
+        ],
+        candidates=[
+            {"page": 31, "label": "output", "value": "42 units"},
+            {"page": 32, "label": "utilization", "value": "81 percent"},
+            {"page": 33, "label": "churn", "value": "4 percent"},
+        ],
+    )
+    existing = [
+        {
+            "subject": "Northstar",
+            "predicate": "output",
+            "raw_value": "42 units",
+            "period": None,
+            "evidence": {"pdf_page": 31, "text": "Northstar output reached 42 units."},
+        }
+    ]
+    calls = []
+
+    def fake_extract(hints, filename, run_id, pages):
+        calls.append((hints, pages))
+        page = pages[0]["pdf_page"]
+        return [
+            {
+                "subject": f"Recovered {page}",
+                "predicate": hints[0]["label"],
+                "raw_value": hints[0]["value"],
+                "period": None,
+                "evidence": {"pdf_page": page, "text": pages[0]["text"]},
+            }
+        ]
+
+    monkeypatch.setattr("app.pipeline._model_extract", fake_extract)
+    recovered = _recover_uncovered_pages(batch, existing, "unseen.pdf", None)
+
+    assert [call[1][0]["pdf_page"] for call in calls] == [32, 33]
+    assert {claim["evidence"]["pdf_page"] for claim in recovered} == {31, 32, 33}
 
 
 def test_flat_provider_evidence_is_canonicalized_before_grounding() -> None:
