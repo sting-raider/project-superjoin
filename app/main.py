@@ -461,7 +461,13 @@ async def run_events(run_id: str, after_id: int = 0) -> StreamingResponse:
 
 
 @app.get("/api/v1/facts")
-def facts(workspace_id: str | None = None, q: str = "", status: str | None = None, limit: int = 200) -> dict[str, Any]:
+def facts(
+    workspace_id: str | None = None,
+    q: str = "",
+    status: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> dict[str, Any]:
     workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
         params: list[Any] = [workspace_id]
@@ -479,9 +485,29 @@ def facts(workspace_id: str | None = None, q: str = "", status: str | None = Non
         if status:
             clauses.append("status=?")
             params.append(status)
-        params.append(max(1, min(limit, 500)))
-        rows = conn.execute(f"SELECT * FROM facts WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC LIMIT ?", params).fetchall()
-    return {"items": rows_to_dicts(rows), "count": len(rows)}
+        where = " AND ".join(clauses)
+        total = int(conn.execute(f"SELECT COUNT(*) FROM facts WHERE {where}", params).fetchone()[0])
+        statuses = [
+            row["status"]
+            for row in conn.execute(
+                "SELECT DISTINCT status FROM facts WHERE workspace_id=? AND active=1 ORDER BY status",
+                (workspace_id,),
+            ).fetchall()
+        ]
+        page_size = max(1, min(limit, 500))
+        page_offset = max(0, offset)
+        rows = conn.execute(
+            f"SELECT * FROM facts WHERE {where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            (*params, page_size, page_offset),
+        ).fetchall()
+    return {
+        "items": rows_to_dicts(rows),
+        "count": len(rows),
+        "total": total,
+        "limit": page_size,
+        "offset": page_offset,
+        "statuses": statuses,
+    }
 
 
 @app.get("/api/v1/search")
@@ -556,11 +582,27 @@ def claim_detail(claim_id: str) -> dict[str, Any]:
 def relationships(workspace_id: str | None = None, relationship_type: str | None = None) -> dict[str, Any]:
     workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
+        clauses = ["r.workspace_id=?"]
+        params: list[Any] = [workspace_id]
         if relationship_type:
-            rows = conn.execute("SELECT * FROM relationships WHERE workspace_id=? AND relationship_type=? ORDER BY created_at DESC", (workspace_id, relationship_type.upper())).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM relationships WHERE workspace_id=? ORDER BY created_at DESC", (workspace_id,)).fetchall()
-    return {"items": rows_to_dicts(rows)}
+            clauses.append("r.relationship_type=?")
+            params.append(relationship_type.upper())
+        rows = conn.execute(
+            f"""SELECT r.*,
+            ca.subject AS subject_a,ca.predicate AS predicate_a,ca.raw_value AS value_a,
+            ca.period AS period_a,ca.modality AS modality_a,da.name AS document_a,
+            cb.subject AS subject_b,cb.predicate AS predicate_b,cb.raw_value AS value_b,
+            cb.period AS period_b,cb.modality AS modality_b,db.name AS document_b
+            FROM relationships r
+            JOIN claims ca ON ca.id=r.claim_a JOIN documents da ON da.id=ca.document_id
+            JOIN claims cb ON cb.id=r.claim_b JOIN documents db ON db.id=cb.document_id
+            WHERE {' AND '.join(clauses)} ORDER BY r.created_at DESC""",
+            params,
+        ).fetchall()
+    items = rows_to_dicts(rows)
+    for item in items:
+        item["dimensions"] = json.loads(item.get("dimensions_json") or "{}")
+    return {"items": items, "count": len(items)}
 
 
 @app.get("/api/v1/entities")
@@ -616,8 +658,17 @@ def embed_claim_endpoint(claim_id: str, payload: dict[str, Any]) -> dict[str, An
 def changes(workspace_id: str | None = None) -> dict[str, Any]:
     workspace_id = _workspace_or_default(workspace_id)
     with db() as conn:
-        rows = conn.execute("SELECT * FROM changes WHERE workspace_id=? ORDER BY created_at DESC LIMIT 100", (workspace_id,)).fetchall()
-    return {"items": rows_to_dicts(rows)}
+        rows = conn.execute(
+            """SELECT c.*,r.document_id,d.name AS document_name,r.status AS run_status
+            FROM changes c LEFT JOIN runs r ON r.id=c.run_id
+            LEFT JOIN documents d ON d.id=COALESCE(r.document_id,json_extract(c.details_json,'$.document_id'))
+            WHERE c.workspace_id=? ORDER BY c.created_at DESC LIMIT 100""",
+            (workspace_id,),
+        ).fetchall()
+    items = rows_to_dicts(rows)
+    for item in items:
+        item["details"] = json.loads(item.get("details_json") or "{}")
+    return {"items": items, "count": len(items)}
 
 
 @app.get("/api/v1/exports/facts")
