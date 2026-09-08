@@ -27,3 +27,21 @@ verify duration before publication with the repository preflight:
 finished file as a release asset rather than adding a large binary to normal Git
 history, and link the release URL from the README only after the release asset
 and its visible evidence have passed the rights preflight.
+
+For a repeatable local capture of the real no-key path, start Compose and run
+the optional recorder from an environment that has Playwright and its browser
+installed:
+
+```powershell
+python -m pip install playwright
+python -m playwright install chromium
+python scripts/record_demo_video.py --output "$env:TEMP\project-superjoin-demo.webm"
+ffmpeg -y -i "$env:TEMP\project-superjoin-demo.webm" -c:v libx264 -pix_fmt yuv420p "$env:TEMP\project-superjoin-demo.mp4"
+python scripts/check_video.py "$env:TEMP\project-superjoin-demo.mp4"
+```
+
+The recorder uses only the local application, labels the recorded snapshot as
+offline replay, and leaves the source-PDF links untouched. Keep the output
+outside the repository until its visible evidence is cleared for publication.
+The current local capture measured 29.6 seconds at 1440x900 and passed the
+video preflight; it is not a public release asset.

@@ -333,6 +333,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   counts, and the stored/source PDF link without embedding starter-specific
   assumptions or leaking local storage paths.
 
+- An optional Playwright recorder now drives the real local no-key UI, adds
+  truthful captions, and never opens source-PDF links. A locally rendered
+  29.6-second 1440x900 MP4 passed `scripts/check_video.py`; the final public
+  release link remains intentionally unchecked until visible demo evidence
+  passes the source-rights publication gate.
+
 ### Resolved implementation simplifications
 
 - The runtime uses Python's `sqlite3` with an explicit schema initializer and

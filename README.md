@@ -82,11 +82,14 @@ prepare a local corpus and validate hashes/page counts. See
 
 ## Video Demo
 
-Video: pending final recording. The intended 2:55 walkthrough covers the four
-assignment cases, the evidence inspector, Knowledge Diff, Trust Gate, and the
-no-key setup. Replay timing and any recorded provider output will be labeled
-as replay rather than presented as live model work. The reproducible capture
-steps are in [`docs/VIDEO_DEMO_SCRIPT.md`](docs/VIDEO_DEMO_SCRIPT.md).
+The optional Playwright recorder now produces a captioned local walkthrough of
+the real no-key UI; a 29.6-second MP4 passed the duration and stream preflight.
+The intended final walkthrough covers the four assignment cases, the evidence
+inspector, Knowledge Diff, Trust Gate, and the no-key setup. Replay timing and
+any recorded provider output are labeled as replay rather than presented as
+live model work. A public video link remains pending the source-rights audit
+for visible demo evidence. Reproducible capture steps are in
+[`docs/VIDEO_DEMO_SCRIPT.md`](docs/VIDEO_DEMO_SCRIPT.md).
 
 ## Approach
 
