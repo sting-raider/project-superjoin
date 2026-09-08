@@ -85,6 +85,11 @@ def profile_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
             for row in call_rows
             if row["status"] not in {"cache_hit", "reserved"}
         ),
+        "http_attempts": sum(
+            int(row["attempts"] or 0)
+            for row in call_rows
+            if row["status"] not in {"cache_hit", "reserved"}
+        ),
     }
 
 

@@ -18,7 +18,7 @@ from app.pipeline import (
     compact_candidate_hints,
     process_document,
 )
-from app.providers import ProviderResult
+from app.providers import ProviderError, ProviderResult
 
 
 def test_claim_identity_is_stable_and_workspace_scoped() -> None:
@@ -244,6 +244,57 @@ def test_completed_extraction_batch_is_reused_without_provider_call(monkeypatch,
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_transient_batch_failure_gets_one_deferred_retry(monkeypatch, tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_rounds = settings.extraction_batch_retry_rounds
+    original_delay = settings.extraction_batch_retry_delay_seconds
+    object.__setattr__(settings, "database_path", tmp_path / "retry.sqlite3")
+    object.__setattr__(settings, "extraction_batch_retry_rounds", 1)
+    object.__setattr__(settings, "extraction_batch_retry_delay_seconds", 0)
+    calls = 0
+    batch = ExtractionBatch(
+        index=0,
+        pages=[{"pdf_page": 1, "section": 0, "start": 0, "text": "ARR was $42m."}],
+        candidates=[],
+    )
+    extracted = [
+        {
+            "subject": "Nimbus Cloud",
+            "predicate": "annual_recurring_revenue",
+            "raw_value": "$42m",
+            "evidence": {"pdf_page": 1, "text": "ARR was $42m."},
+        }
+    ]
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES('w','W',?)", (now,))
+            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES('d','w','x.pdf','h','processing',?)", (now,))
+            conn.execute("INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES('r','w','d','live','processing',0,'',?,?)", (now, now))
+
+        def flaky_extract(*args):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise ProviderError("temporary overload")
+            return extracted
+
+        monkeypatch.setattr("app.pipeline._model_extract", flaky_extract)
+
+        assert _extract_document_batches([batch], "x.pdf", "r", "d") == extracted
+        assert calls == 2
+        with db() as conn:
+            checkpoint = conn.execute(
+                "SELECT status,claim_count FROM extraction_batches WHERE document_id='d'"
+            ).fetchone()
+        assert dict(checkpoint) == {"status": "complete", "claim_count": 1}
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "extraction_batch_retry_rounds", original_rounds)
+        object.__setattr__(settings, "extraction_batch_retry_delay_seconds", original_delay)
 
 
 def test_completed_batches_publish_provisional_claims_before_commit(

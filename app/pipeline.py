@@ -5,6 +5,7 @@ import io
 import json
 import re
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -293,7 +294,7 @@ def _extract_document_batches(
             _model_extract, batch.candidates, filename, run_id, batch.pages
         )
         futures[future] = (batch, digest)
-    completed_count = len(results)
+    retryable: list[tuple[ExtractionBatch, str]] = []
     for future in as_completed(futures):
         _raise_if_cancelled(run_id)
         batch, digest = futures[future]
@@ -301,6 +302,8 @@ def _extract_document_batches(
             claims = future.result()
         except Exception as exc:  # noqa: BLE001 - retain failure checkpoint for inspection
             claims = []
+            if isinstance(exc, ProviderError):
+                retryable.append((batch, digest))
             _checkpoint_batch(
                 document_id,
                 run_id,
@@ -323,7 +326,6 @@ def _extract_document_batches(
                 claims,
             )
         results[batch.index] = claims
-        completed_count += 1
         if workspace_id and claims:
             _insert_claims(
                 workspace_id,
@@ -335,11 +337,83 @@ def _extract_document_batches(
         _update_stage(
             run_id,
             "extraction",
-            completed_count,
+            len(results) - len(retryable),
             len(batches),
-            f"Extracted {completed_count} of {len(batches)} batches",
+            f"Completed {len(results) - len(retryable)} of {len(batches)} batches",
             _batch_counts(run_id),
         )
+    for round_index in range(max(0, settings.extraction_batch_retry_rounds)):
+        if not retryable:
+            break
+        delay = max(0.0, settings.extraction_batch_retry_delay_seconds)
+        _update_stage(
+            run_id,
+            "extraction",
+            len(results) - len(retryable),
+            len(batches),
+            f"Cooling down {delay:g}s before retrying {len(retryable)} batches",
+            _batch_counts(run_id),
+        )
+        if delay:
+            time.sleep(delay)
+        pending = retryable
+        retryable = []
+        unresolved_indices = {batch.index for batch, _ in pending}
+        retry_futures = {
+            executor.submit(
+                _model_extract, batch.candidates, filename, run_id, batch.pages
+            ): (batch, digest)
+            for batch, digest in pending
+        }
+        for future in as_completed(retry_futures):
+            _raise_if_cancelled(run_id)
+            batch, digest = retry_futures[future]
+            try:
+                claims = future.result()
+            except Exception as exc:  # noqa: BLE001 - preserve the final checkpoint
+                claims = []
+                if isinstance(exc, ProviderError):
+                    retryable.append((batch, digest))
+                _checkpoint_batch(
+                    document_id,
+                    run_id,
+                    batch,
+                    digest,
+                    "failed",
+                    0,
+                    str(exc),
+                    claims,
+                )
+            else:
+                unresolved_indices.discard(batch.index)
+                _checkpoint_batch(
+                    document_id,
+                    run_id,
+                    batch,
+                    digest,
+                    "complete",
+                    len(claims),
+                    None,
+                    claims,
+                )
+            results[batch.index] = claims
+            if workspace_id and claims:
+                _insert_claims(
+                    workspace_id,
+                    document_id,
+                    run_id,
+                    claims,
+                    publication_state="provisional",
+                )
+            processed = len(results) - len(unresolved_indices)
+            _update_stage(
+                run_id,
+                "extraction",
+                processed,
+                len(batches),
+                f"Retry round {round_index + 1}: {processed} of {len(batches)} batches processed",
+                _batch_counts(run_id),
+            )
     return [claim for index in sorted(results) for claim in results[index]]
 
 

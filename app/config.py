@@ -70,6 +70,12 @@ class Settings:
     extraction_batch_chars: int = _int_env("EXTRACTION_BATCH_CHARS", 12000)
     extraction_hint_limit: int = _int_env("EXTRACTION_HINT_LIMIT", 16)
     extraction_claims_per_batch: int = _int_env("EXTRACTION_CLAIMS_PER_BATCH", 4)
+    extraction_batch_retry_rounds: int = _int_env(
+        "EXTRACTION_BATCH_RETRY_ROUNDS", 1
+    )
+    extraction_batch_retry_delay_seconds: float = _float_env(
+        "EXTRACTION_BATCH_RETRY_DELAY_SECONDS", 5.0
+    )
     reasoning_concurrency: int = _int_env("REASONING_CONCURRENCY", 2)
     relationship_candidate_limit: int = _int_env("RELATIONSHIP_CANDIDATE_LIMIT", 12)
     relationship_semantic_limit: int = _int_env("RELATIONSHIP_SEMANTIC_LIMIT", 24)
