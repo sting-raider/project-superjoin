@@ -120,6 +120,28 @@ details and output quality; the runtime reports these differences rather than
 silently switching models. Exact filtered vector scans suit the evaluator-scale
 SQLite deployment and are not claimed as a large distributed ANN index.
 
+Relationships are currently stored and presented at immutable claim-pair
+granularity. If several passages or editions discuss the same canonical metric,
+the Relationship Desk can therefore show several evidence comparisons about
+that metric. In the current three-document macroeconomic workspace, the ten
+relationships cluster around real GDP growth because that is the fact family
+with compatible entities, value types, periods, and contexts across the three
+sources. The count describes claim-level comparisons; it should not be read as
+ten distinct metrics. The engine deliberately avoids manufacturing links
+between superficially similar claims whose periods, units, or meanings are not
+comparable.
+
+A useful next refinement is a relationship-family view that groups those raw
+edges by canonical entity, predicate, normalized period, modality, and source
+pair. The UI could then say, for example, “three reasoning cases from ten
+claim-level comparisons,” while retaining every source sentence and page in a
+drill-down. A coverage view could also list the metrics shared across sources,
+explain why other candidates were not comparable, and distinguish relationship
+diversity from evidence volume. Further evaluation should measure relationship
+precision and recall across unrelated domains, near-alias predicates, reporting
+vintages, and partial-period versus full-period disclosures before changing the
+reasoning thresholds.
+
 The measured LiteParse comparison and bounded live latency reports under
 `evals/reports/` are development evidence, not a claim of universal corpus
 quality. The project owner will record the final live-only walkthrough. Source
