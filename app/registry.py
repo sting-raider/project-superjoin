@@ -44,8 +44,51 @@ def _name_key(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", value.casefold())).strip()
 
 
+_LEGAL_SUFFIXES = re.compile(
+    r"(?:\s+(?:private\s+limited|pvt\s+ltd|limited|ltd|incorporated|inc|"
+    r"corporation|corp|plc|llc))+$"
+)
+_PERIOD_PREDICATE_FRAGMENT = re.compile(
+    r"(?:^|_)(?:(?:for|in|during|from|to|as_of|at)_)?"
+    r"(?:fy|fiscal_year|fiscal|calendar_year)_?\d{2,4}(?:_\d{2,4})?(?=_|$)"
+)
+_MODALITY_FAMILIES = {
+    "actual": {"actual"},
+    "asserted": {"asserted", "assertion"},
+    "estimate": {"estimate", "estimated"},
+    "estimated": {"estimate", "estimated"},
+    "forecast": {"forecast", "forecasted", "projected", "projection"},
+    "observed": {"observed"},
+    "projection": {"forecast", "forecasted", "projected", "projection"},
+    "reported": {"reported"},
+}
+
+
+def _entity_match_key(value: str) -> str:
+    """Normalize common legal suffix variants without collapsing business scopes."""
+
+    return _LEGAL_SUFFIXES.sub("", _name_key(value)).strip()
+
+
 def _predicate_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_") or "unknown_predicate"
+
+
+def conceptual_predicate(
+    value: str, period: str | None = None, modality: str | None = None
+) -> str:
+    """Separate structured period/modality qualifiers from predicate identity."""
+
+    key = _predicate_key(value)
+    if period:
+        key = _PERIOD_PREDICATE_FRAGMENT.sub("_", key)
+    family = _MODALITY_FAMILIES.get(_name_key(modality or ""), set())
+    tokens = [token for token in key.split("_") if token]
+    while tokens and tokens[0] in family:
+        tokens.pop(0)
+    while tokens and tokens[-1] in family:
+        tokens.pop()
+    return re.sub(r"_+", "_", "_".join(tokens)).strip("_") or "unknown_predicate"
 
 
 def observe_claim_schema(
@@ -180,7 +223,8 @@ def _register_workspace_claims(
 ) -> int:
     with db() as conn:
         rows = conn.execute(
-            """SELECT c.id,c.subject,c.predicate,c.value_type,c.evidence_json
+            """SELECT c.id,c.subject,c.predicate,c.value_type,c.evidence_json,
+            c.period,c.modality
             FROM claims c JOIN claim_interpretations ci ON ci.claim_id=c.id
               AND ci.version=(SELECT MAX(ci2.version) FROM claim_interpretations ci2 WHERE ci2.claim_id=c.id)
             WHERE c.workspace_id=? AND c.extraction_status='accepted'
@@ -202,7 +246,7 @@ def _register_workspace_claims(
             ).fetchall()
         ]
         entity_aliases = {
-            _name_key(row["alias"]): {"id": row["id"], "label": row["label"]}
+            _entity_match_key(row["alias"]): {"id": row["id"], "label": row["label"]}
             for row in conn.execute(
                 "SELECT ea.entity_id AS id,ea.alias,e.canonical_name AS label FROM entity_aliases ea JOIN entities e ON e.id=ea.entity_id WHERE e.workspace_id=? AND ea.status='confirmed'",
                 (workspace_id,),
@@ -217,20 +261,22 @@ def _register_workspace_claims(
                 (workspace_id,),
             ).fetchall()
         }
-    entity_exact = {_name_key(row["label"]): row for row in entity_candidates}
+    entity_exact = {_entity_match_key(row["label"]): row for row in entity_candidates}
     predicate_exact = {_predicate_key(row["label"]): row for row in predicate_candidates}
     entity_ids = {row["id"] for row in entity_candidates}
     predicate_ids = {row["id"] for row in predicate_candidates}
     unresolved_texts = [
         str(row["subject"])
         for row in rows
-        if _name_key(row["subject"]) not in entity_exact
-        and _name_key(row["subject"]) not in entity_aliases
+        if _entity_match_key(row["subject"]) not in entity_exact
+        and _entity_match_key(row["subject"]) not in entity_aliases
     ] + [
-        str(row["predicate"])
+        conceptual_predicate(row["predicate"], row["period"], row["modality"])
         for row in rows
-        if _predicate_key(row["predicate"]) not in predicate_exact
-        and _predicate_key(row["predicate"]) not in predicate_aliases
+        if conceptual_predicate(row["predicate"], row["period"], row["modality"])
+        not in predicate_exact
+        and conceptual_predicate(row["predicate"], row["period"], row["modality"])
+        not in predicate_aliases
     ]
     candidate_texts = [str(row["label"]) for row in entity_candidates] + [
         str(row["label"]) for row in predicate_candidates
@@ -246,8 +292,11 @@ def _register_workspace_claims(
         progress(0, total)
     for index, row in enumerate(rows, start=1):
         evidence = json.loads(row["evidence_json"])
-        entity_key = _name_key(row["subject"])
-        predicate_key = _predicate_key(row["predicate"])
+        entity_key = _entity_match_key(row["subject"])
+        predicate_source = conceptual_predicate(
+            row["predicate"], row["period"], row["modality"]
+        )
+        predicate_key = _predicate_key(predicate_source)
         entity = entity_resolutions.get(entity_key)
         predicate = predicate_resolutions.get(predicate_key)
         if entity is None:
@@ -285,7 +334,7 @@ def _register_workspace_claims(
                 else _resolve_staged(
                     workspace_id,
                     "predicate",
-                    row["predicate"],
+                    predicate_source,
                     predicate_candidates,
                     run_id,
                     row["value_type"],
@@ -295,7 +344,8 @@ def _register_workspace_claims(
             )
             with db() as conn:
                 predicate = _materialize_resolution(
-                    conn, workspace_id, "predicate", row["predicate"], predicate, row["value_type"], evidence
+                    conn, workspace_id, "predicate", predicate_source, predicate,
+                    row["value_type"], evidence
                 )
             predicate_resolutions[predicate_key] = predicate
             if predicate.get("id") and predicate["id"] not in predicate_ids:
@@ -310,7 +360,7 @@ def _register_workspace_claims(
         with db() as conn:
             conn.execute(
                 """UPDATE claim_interpretations SET
-                entity_status=?,predicate_status=?,entity_id=?,predicate_id=?,
+                entity_status=?,predicate_status=?,entity_id=?,predicate_id=?,predicate=?,
                 entity_relation=?,predicate_relation=?
                 WHERE claim_id=? AND version=(SELECT MAX(version) FROM claim_interpretations WHERE claim_id=?)""",
                 (
@@ -318,6 +368,7 @@ def _register_workspace_claims(
                     predicate["status"],
                     entity.get("id"),
                     predicate.get("id"),
+                    predicate_source,
                     entity.get("relation"),
                     predicate.get("relation"),
                     row["id"],
@@ -344,12 +395,12 @@ def resolve_entity(
             "SELECT ea.entity_id AS id,ea.alias,e.canonical_name AS label FROM entity_aliases ea JOIN entities e ON e.id=ea.entity_id WHERE e.workspace_id=? AND ea.status='confirmed'",
             (workspace_id,),
         ).fetchall()
-    key = _name_key(name)
+    key = _entity_match_key(name)
     for row in rows:
-        if _name_key(row["label"]) == key:
+        if _entity_match_key(row["label"]) == key:
             return _resolved(row, "exact")
     for row in aliases:
-        if _name_key(row["alias"]) == key:
+        if _entity_match_key(row["alias"]) == key:
             return _resolved(dict(row), "alias")
     return _resolve_staged(workspace_id, "entity", name, rows, run_id)
 

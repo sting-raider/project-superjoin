@@ -7,7 +7,9 @@ from app.db import db, init_db, utc_now
 from app.registry import (
     _registry_embeddings,
     _resolve_staged,
+    conceptual_predicate,
     observe_claim_schema,
+    resolve_entity,
     resolve_predicate,
 )
 
@@ -46,6 +48,31 @@ def test_unseen_predicate_is_immediately_usable_without_code_change(tmp_path: Pa
         assert first["predicate"]["relation"] == "new"
         assert second["id"] == first["predicate"]["id"]
         assert second["match"] == "exact"
+    finally:
+        _restore_database(original_database, original_upload)
+
+
+def test_structured_context_does_not_pollute_predicate_identity() -> None:
+    assert conceptual_predicate(
+        "estimated_p_l_charge_for_fy27", "FY27", "estimated"
+    ) == "p_l_charge"
+    assert conceptual_predicate(
+        "total_csr_spent_fy2024", "FY2024", "reported"
+    ) == "total_csr_spent"
+    assert conceptual_predicate(
+        "year_over_year_change", "FY2024", "reported"
+    ) == "year_over_year_change"
+
+
+def test_legal_suffix_alias_does_not_merge_a_distinct_scope(tmp_path: Path) -> None:
+    original_database, original_upload = _use_database(tmp_path / "legal-alias.sqlite3")
+    try:
+        base = observe_claim_schema("w", "Northstar", "arr", "money")["entity"]
+        assert resolve_entity("w", "Northstar Limited")["id"] == base["id"]
+        holdings = observe_claim_schema(
+            "w", "Northstar Holdings Limited", "arr", "money"
+        )["entity"]
+        assert holdings["id"] != base["id"]
     finally:
         _restore_database(original_database, original_upload)
 
