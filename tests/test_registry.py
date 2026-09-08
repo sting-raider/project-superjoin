@@ -8,6 +8,7 @@ from app.registry import (
     _registry_embeddings,
     _resolve_staged,
     conceptual_predicate,
+    normalize_claim_frame,
     observe_claim_schema,
     resolve_entity,
     resolve_predicate,
@@ -62,6 +63,23 @@ def test_structured_context_does_not_pollute_predicate_identity() -> None:
     assert conceptual_predicate(
         "year_over_year_change", "FY2024", "reported"
     ) == "year_over_year_change"
+
+
+def test_metric_bearing_subject_normalizes_to_entity_metric_frame() -> None:
+    assert normalize_claim_frame(
+        "Northstar Works furnace utilization FY26",
+        "projected at",
+        "FY26",
+        "projected",
+        "Northstar Works",
+    ) == ("Northstar Works", "furnace_utilization")
+    assert normalize_claim_frame(
+        "Nimbus Cloud",
+        "annual recurring revenue",
+        "FY26",
+        "reported",
+        "company",
+    ) == ("Nimbus Cloud", "annual_recurring_revenue")
 
 
 def test_legal_suffix_alias_does_not_merge_a_distinct_scope(tmp_path: Path) -> None:

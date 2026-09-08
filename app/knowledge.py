@@ -265,6 +265,8 @@ def _needs_semantic_relationship_review(a: Any, b: Any, relationship_type: str) 
         a["value_type"] == "semantic" or b["value_type"] == "semantic"
     ):
         return True
+    if relationship_type == "CONTRADICTS":
+        return False
     evidence_parts = [
         str(item.get("text") or "")
         for claim in (a, b)
@@ -682,7 +684,13 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
     if a["value_type"] in {"money", "number", "percentage"} and b["value_type"] in {"money", "number", "percentage"}:
         precision_a = a.get("precision") if hasattr(a, "get") else a["precision"]
         precision_b = b.get("precision") if hasattr(b, "get") else b["precision"]
-        dimensions["value"] = compare_numeric(a["normalized_value"], b["normalized_value"], precision_a, precision_b)
+        dimensions["value"] = compare_numeric(
+            a["normalized_value"],
+            b["normalized_value"],
+            precision_a,
+            precision_b,
+            percentage=a["value_type"] == b["value_type"] == "percentage",
+        )
     elif a["normalized_value"] is not None and b["normalized_value"] is not None and a["normalized_value"] == b["normalized_value"]:
         dimensions["value"] = "equal"
     if period_a != period_b:
@@ -690,7 +698,42 @@ def compare_claim_pair(a: Any, b: Any) -> tuple[str, str, dict[str, str], float]
     if dimensions["value"] in {"equal", "rounding-compatible"}:
         return "CORROBORATES", "Values are equivalent after deterministic normalization.", dimensions, 0.96
     if modality_a != modality_b:
-        return "RECONCILES", "The claims use different modalities or data vintages.", dimensions, 0.86
+        forecast_modalities = {"forecast", "guidance", "management_guidance"}
+        estimate_modalities = {
+            "estimated",
+            "first_estimate",
+            "preliminary",
+            "reported",
+            "revised_estimate",
+        }
+        modalities = {modality_a, modality_b}
+        if modalities & forecast_modalities and modalities - forecast_modalities:
+            return (
+                "UNCERTAIN",
+                "The values use forecast and historical/estimate contexts; they are not directly competing assertions.",
+                dimensions,
+                0.91,
+            )
+        if modalities.issubset(estimate_modalities):
+            return (
+                "RECONCILES",
+                f"The same target period is reported with different estimate vintages or release stages ({modality_a} versus {modality_b}).",
+                dimensions,
+                0.9,
+            )
+        return (
+            "UNCERTAIN",
+            f"The values use different source contexts ({modality_a} versus {modality_b}); comparison requires review.",
+            dimensions,
+            0.72,
+        )
+    if modality_a == "forecast":
+        return (
+            "CONTRADICTS",
+            "Independent forecasts for the same subject, metric, and period report competing values; neither forecast is treated as objectively false.",
+            dimensions,
+            0.91,
+        )
     return "CONTRADICTS", "Same subject, predicate, period, and modality with incompatible values.", dimensions, 0.84
 
 

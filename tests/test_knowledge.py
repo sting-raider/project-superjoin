@@ -29,8 +29,14 @@ def _claim(**overrides):
 
 def test_same_explicit_context_does_not_infer_a_hidden_vintage() -> None:
     relationship, _, _, _ = compare_claim_pair(
-        _claim(normalized_value="0.064"),
-        _claim(normalized_value="0.065", evidence_json=json.dumps({"text": "second advance estimate"})),
+        _claim(
+            normalized_value="0.064",
+            evidence_json=json.dumps({"text": "published estimate"}),
+        ),
+        _claim(
+            normalized_value="0.065",
+            evidence_json=json.dumps({"text": "published estimate"}),
+        ),
     )
     assert relationship == "CONTRADICTS"
 
@@ -310,3 +316,89 @@ def test_incremental_relationships_only_rank_prior_documents() -> None:
     assert all(left["document_id"] == "new-doc" for left, _ in pairs)
     assert all(right["document_id"] != "new-doc" for _, right in pairs)
     assert {right["id"] for _, right in pairs[:2]} == {"old-0", "old-1"}
+
+
+def _synthetic_comparison_claim(**overrides):
+    claim = {
+        "subject": "Northstar Works",
+        "predicate": "furnace_utilization",
+        "period": "FY26",
+        "modality": "forecast",
+        "value_type": "percentage",
+        "normalized_value": "0.82",
+        "precision": 2,
+        "evidence_json": json.dumps({"text": "Utilization is forecast at 82 percent."}),
+    }
+    claim.update(overrides)
+    return claim
+
+
+def test_independent_same_period_forecasts_with_different_values_compete() -> None:
+    relationship, reason, dimensions, _ = compare_claim_pair(
+        _synthetic_comparison_claim(normalized_value="0.82"),
+        _synthetic_comparison_claim(normalized_value="0.79"),
+    )
+    assert relationship == "CONTRADICTS"
+    assert dimensions["period"] == "MATCH"
+    assert "neither forecast" in reason.casefold()
+
+
+def test_same_period_estimate_vintages_reconcile() -> None:
+    relationship, reason, _, _ = compare_claim_pair(
+        _synthetic_comparison_claim(modality="first_estimate", normalized_value="0.82"),
+        _synthetic_comparison_claim(modality="revised_estimate", normalized_value="0.84"),
+    )
+    assert relationship == "RECONCILES"
+    assert "first_estimate" in reason
+    assert "revised_estimate" in reason
+
+
+def test_different_fiscal_periods_do_not_compete() -> None:
+    relationship, _, dimensions, _ = compare_claim_pair(
+        _synthetic_comparison_claim(period="FY26", normalized_value="0.82"),
+        _synthetic_comparison_claim(period="FY2026/27", normalized_value="0.79"),
+    )
+    assert relationship == "UNRELATED"
+    assert dimensions["period"] == "DIFFERENT"
+
+
+def test_forecast_and_historical_value_do_not_blindly_contradict() -> None:
+    relationship, _, _, _ = compare_claim_pair(
+        _synthetic_comparison_claim(modality="forecast", normalized_value="0.82"),
+        _synthetic_comparison_claim(
+            modality="reported",
+            normalized_value="0.79",
+            evidence_json=json.dumps({"text": "Utilization was 79 percent."}),
+        ),
+    )
+    assert relationship == "UNCERTAIN"
+
+
+def test_candidate_ranking_retains_closest_context_among_broad_topic_rows() -> None:
+    current = {
+        **_synthetic_comparison_claim(),
+        "id": "current",
+        "document_id": "new-document",
+        "unit": "%",
+        "created_at": "2026-09-01",
+    }
+    closest = {
+        **current,
+        "id": "closest",
+        "document_id": "closest-document",
+        "normalized_value": "0.79",
+    }
+    broad_rows = [
+        {
+            **current,
+            "id": f"broad-{index}",
+            "document_id": f"broad-document-{index}",
+            "period": f"FY{40 + index}",
+            "modality": "reported",
+            "unit": "units",
+            "created_at": f"2026-08-{index + 1:02d}",
+        }
+        for index in range(20)
+    ]
+    pairs = _relationship_pairs([current, *broad_rows, closest], "new-document")
+    assert pairs[0][1]["id"] == "closest"

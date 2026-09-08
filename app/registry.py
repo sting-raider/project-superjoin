@@ -92,6 +92,119 @@ def conceptual_predicate(
     return re.sub(r"_+", "_", "_".join(tokens)).strip("_") or "unknown_predicate"
 
 
+_GENERIC_SCOPE_LABELS = {
+    "company",
+    "consolidated",
+    "global",
+    "group",
+    "standalone",
+}
+_MEASUREMENT_RELATION_TOKENS = {
+    "actual",
+    "amounted",
+    "at",
+    "be",
+    "been",
+    "by",
+    "estimate",
+    "estimated",
+    "forecast",
+    "forecasted",
+    "grew",
+    "grown",
+    "is",
+    "observed",
+    "projected",
+    "projection",
+    "reported",
+    "reached",
+    "stated",
+    "stood",
+    "to",
+    "was",
+    "were",
+}
+
+
+def normalize_claim_frame(
+    subject: str,
+    predicate: str,
+    period: str | None,
+    modality: str | None,
+    scope: str | None,
+    known_entities: list[str] | None = None,
+) -> tuple[str, str]:
+    """Separate a metric-bearing subject into entity and conceptual predicate.
+
+    Extraction providers vary between ``entity / metric`` and
+    ``entity metric / grammatical relation``.  This domain-neutral transform
+    recognizes only an explicit scope or an already observed entity prefix;
+    it never invents an entity or relies on a document-specific vocabulary.
+    """
+
+    subject_text = re.sub(r"\s+", " ", subject).strip()
+    predicate_text = conceptual_predicate(predicate, period, modality)
+    prefixes = [
+        value.strip()
+        for value in [*(known_entities or []), scope or ""]
+        if value and _name_key(value) not in _GENERIC_SCOPE_LABELS
+    ]
+    prefixes.sort(key=lambda value: len(_name_key(value)), reverse=True)
+    entity = subject_text
+    metric = ""
+    for prefix in prefixes:
+        match = re.match(
+            rf"^{re.escape(prefix)}(?:['’]s)?\s+(.+)$",
+            subject_text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            candidate_metric = match.group(1).strip()
+            if period:
+                candidate_metric = re.sub(
+                    re.escape(str(period)), " ", candidate_metric, flags=re.IGNORECASE
+                )
+            candidate_tokens = [
+                token
+                for token in re.findall(r"[a-z0-9]+", candidate_metric.casefold())
+                if token
+                and token not in _MEASUREMENT_RELATION_TOKENS
+                and not re.fullmatch(r"(?:fy)?\d{2,4}", token)
+            ]
+            if not candidate_tokens:
+                continue
+            entity = prefix
+            metric = match.group(1).strip()
+            break
+    if not metric:
+        return subject_text, predicate_text
+
+    if period:
+        metric = re.sub(re.escape(str(period)), " ", metric, flags=re.IGNORECASE)
+    metric_tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", metric.casefold())
+        if token
+        and token not in _MEASUREMENT_RELATION_TOKENS
+        and not re.fullmatch(r"(?:fy)?\d{2,4}", token)
+    ]
+    modality_family = _MODALITY_FAMILIES.get(_name_key(modality or ""), set())
+    metric_tokens = [token for token in metric_tokens if token not in modality_family]
+    predicate_tokens = [
+        token
+        for token in _predicate_key(predicate_text).split("_")
+        if token and token not in _MEASUREMENT_RELATION_TOKENS
+    ]
+    metric_set = set(metric_tokens)
+    non_redundant = [
+        token
+        for token in predicate_tokens
+        if token not in metric_set and not (token == "rate" and metric_set)
+    ]
+    combined = [*metric_tokens, *non_redundant]
+    return entity, "_".join(dict.fromkeys(combined)) or predicate_text
+
+
 def observe_claim_schema(
     workspace_id: str,
     subject: str,
@@ -223,9 +336,10 @@ def _register_workspace_claims(
     progress: Callable[[int, int], None] | None = None,
 ) -> int:
     with db() as conn:
-        rows = conn.execute(
+        source_rows = conn.execute(
             """SELECT c.id,c.subject,c.predicate,c.value_type,c.evidence_json,
-            c.period,c.modality,ci.predicate AS interpretation_predicate,
+            c.period,c.modality,c.scope,ci.subject AS interpretation_subject,
+            ci.predicate AS interpretation_predicate,
             ci.period AS interpretation_period,ci.modality AS interpretation_modality,
             ci.entity_status,ci.predicate_status
             FROM claims c JOIN claim_interpretations ci ON ci.claim_id=c.id
@@ -244,17 +358,6 @@ def _register_workspace_claims(
                 str(item.get("text") or "") for item in items if isinstance(item, dict)
             )
 
-        rows = [
-            row for row in rows
-            if row["entity_status"] != "resolved"
-            or row["predicate_status"] != "resolved"
-            or row["interpretation_predicate"] != conceptual_predicate(
-                row["predicate"], row["period"], row["modality"]
-            )
-            or row["interpretation_period"] != normalize_period_label(row["period"])
-            or row["interpretation_modality"]
-            != normalize_modality(row["modality"], evidence_text(row))
-        ]
         entity_candidates = [
             dict(row)
             for row in conn.execute(
@@ -268,6 +371,31 @@ def _register_workspace_claims(
                 "SELECT id,key AS label,value_kind FROM predicates WHERE workspace_id=? AND status='active'",
                 (workspace_id,),
             ).fetchall()
+        ]
+        known_entity_labels = [str(row["label"]) for row in entity_candidates]
+        rows = []
+        for source_row in source_rows:
+            row = dict(source_row)
+            schema_subject, schema_predicate = normalize_claim_frame(
+                row["subject"],
+                row["predicate"],
+                row["period"],
+                row["modality"],
+                row["scope"],
+                known_entity_labels,
+            )
+            row["schema_subject"] = schema_subject
+            row["schema_predicate"] = schema_predicate
+            rows.append(row)
+        rows = [
+            row for row in rows
+            if row["entity_status"] != "resolved"
+            or row["predicate_status"] != "resolved"
+            or row["interpretation_subject"] != row["schema_subject"]
+            or row["interpretation_predicate"] != row["schema_predicate"]
+            or row["interpretation_period"] != normalize_period_label(row["period"])
+            or row["interpretation_modality"]
+            != normalize_modality(row["modality"], evidence_text(row))
         ]
         entity_aliases = {
             _entity_match_key(row["alias"]): {"id": row["id"], "label": row["label"]}
@@ -290,17 +418,15 @@ def _register_workspace_claims(
     entity_ids = {row["id"] for row in entity_candidates}
     predicate_ids = {row["id"] for row in predicate_candidates}
     unresolved_texts = [
-        str(row["subject"])
+            str(row["schema_subject"])
+            for row in rows
+            if _entity_match_key(row["schema_subject"]) not in entity_exact
+            and _entity_match_key(row["schema_subject"]) not in entity_aliases
+        ] + [
+        str(row["schema_predicate"])
         for row in rows
-        if _entity_match_key(row["subject"]) not in entity_exact
-        and _entity_match_key(row["subject"]) not in entity_aliases
-    ] + [
-        conceptual_predicate(row["predicate"], row["period"], row["modality"])
-        for row in rows
-        if conceptual_predicate(row["predicate"], row["period"], row["modality"])
-        not in predicate_exact
-        and conceptual_predicate(row["predicate"], row["period"], row["modality"])
-        not in predicate_aliases
+        if _predicate_key(row["schema_predicate"]) not in predicate_exact
+        and _predicate_key(row["schema_predicate"]) not in predicate_aliases
     ]
     candidate_texts = [str(row["label"]) for row in entity_candidates] + [
         str(row["label"]) for row in predicate_candidates
@@ -316,10 +442,9 @@ def _register_workspace_claims(
         progress(0, total)
     for index, row in enumerate(rows, start=1):
         evidence = json.loads(row["evidence_json"])
-        entity_key = _entity_match_key(row["subject"])
-        predicate_source = conceptual_predicate(
-            row["predicate"], row["period"], row["modality"]
-        )
+        entity_source = row["schema_subject"]
+        entity_key = _entity_match_key(entity_source)
+        predicate_source = row["schema_predicate"]
         predicate_key = _predicate_key(predicate_source)
         entity = entity_resolutions.get(entity_key)
         predicate = predicate_resolutions.get(predicate_key)
@@ -331,7 +456,7 @@ def _register_workspace_claims(
                 else _resolve_staged(
                     workspace_id,
                     "entity",
-                    row["subject"],
+                    entity_source,
                     entity_candidates,
                     run_id,
                     vectors=registry_vectors,
@@ -340,7 +465,7 @@ def _register_workspace_claims(
             )
             with db() as conn:
                 entity = _materialize_resolution(
-                    conn, workspace_id, "entity", row["subject"], entity, row["value_type"], evidence
+                    conn, workspace_id, "entity", entity_source, entity, row["value_type"], evidence
                 )
             entity_resolutions[entity_key] = entity
             if entity.get("id") and entity["id"] not in entity_ids:
@@ -384,7 +509,7 @@ def _register_workspace_claims(
         with db() as conn:
             conn.execute(
                 """UPDATE claim_interpretations SET
-                entity_status=?,predicate_status=?,entity_id=?,predicate_id=?,predicate=?,period=?,modality=?,
+                entity_status=?,predicate_status=?,entity_id=?,predicate_id=?,subject=?,predicate=?,period=?,modality=?,
                 entity_relation=?,predicate_relation=?
                 WHERE claim_id=? AND version=(SELECT MAX(version) FROM claim_interpretations WHERE claim_id=?)""",
                 (
@@ -392,6 +517,7 @@ def _register_workspace_claims(
                     predicate["status"],
                     entity.get("id"),
                     predicate.get("id"),
+                    entity_source,
                     predicate_source,
                     normalize_period_label(row["period"]),
                     normalize_modality(row["modality"], evidence_text(row)),

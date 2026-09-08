@@ -59,6 +59,7 @@ def test_rounding_comparison_is_explicit() -> None:
     assert compare_numeric("0.064", "0.065", 3, 3) == "different"
     assert compare_numeric("0.064", "0.065") == "different"
     assert compare_numeric("100", "110") == "different"
+    assert compare_numeric("0.065", "0.066", 1, 1, percentage=True) == "different"
 
 
 def test_percentage_points_and_basis_points_keep_distinct_semantics() -> None:

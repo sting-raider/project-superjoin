@@ -201,11 +201,11 @@ def normalize_modality(value: str | None, evidence_text: str | None = None) -> s
     # Providers sometimes return a generic assertion label even though the
     # cited sentence states a more precise forecast or estimate status.  The
     # source wording is authoritative in that narrow case.
-    if normalized in {"reported", "observed"} and evidence_text:
+    if normalized in {"reported", "observed", "estimated"} and evidence_text:
         evidence = re.sub(r"\s+", " ", evidence_text.casefold())
-        if re.search(r"\b(?:first advance estimate|initial estimate)\b", evidence):
+        if re.search(r"\b(?:first advance estimates?|initial estimates?)\b", evidence):
             return "first_estimate"
-        if re.search(r"\b(?:second advance estimate|revised estimate|updated estimate)\b", evidence):
+        if re.search(r"\b(?:second advance estimates?|revised estimates?|updated estimates?)\b", evidence):
             return "revised_estimate"
         if re.search(r"\b(?:forecast(?:ed)?|project(?:ed|ion)|expected to)\b", evidence):
             return "forecast"
@@ -240,7 +240,14 @@ def infer_modality(text: str) -> str | None:
     return None
 
 
-def compare_numeric(a: str | None, b: str | None, precision_a: int | None = None, precision_b: int | None = None) -> str:
+def compare_numeric(
+    a: str | None,
+    b: str | None,
+    precision_a: int | None = None,
+    precision_b: int | None = None,
+    *,
+    percentage: bool = False,
+) -> str:
     if a is None or b is None:
         return "unknown"
     try:
@@ -258,7 +265,7 @@ def compare_numeric(a: str | None, b: str | None, precision_a: int | None = None
     if precisions:
         scale = max(abs(left), abs(right), Decimal(1))
         significant_places = max(precisions)
-        tolerance = scale * (Decimal(10) ** -significant_places) / 2
+        tolerance = scale * (Decimal(10) ** -(significant_places + (2 if percentage else 0))) / 2
     else:
         scale = max(abs(left), abs(right))
         tolerance = Decimal("0.0005") if scale <= 1 else Decimal("0.5")
