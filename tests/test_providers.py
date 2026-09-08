@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import threading
@@ -387,3 +388,37 @@ def test_transient_network_failure_uses_bounded_retry_policy(monkeypatch) -> Non
     assert calls == [90, 90]
     assert len(sleeps) == 1
     assert 0.0 <= sleeps[0] <= 0.25
+
+
+def test_incomplete_http_response_uses_bounded_retry_policy(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="http://partial-response.example/v1",
+        extraction_api_key="retry-key",
+        extraction_model="arbitrary-model",
+        provider_retry_attempts=2,
+        provider_retry_backoff_seconds=0.0,
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    calls = 0
+
+    def fake_urlopen(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise http.client.IncompleteRead(b"")
+        return _Response(
+            {
+                "choices": [
+                    {
+                        "message": {"content": '{"claims": []}'},
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    result = providers.structured_chat("extraction", "system", "user")
+    assert calls == 2
+    assert result.attempts == 2

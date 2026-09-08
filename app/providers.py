@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import http.client
 import json
 import random
 import threading
@@ -289,7 +290,12 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
                     ) * (2**attempt)
                     _note_role_rate_limit(role, delay)
                 _sleep_before_retry(attempt, retry_after)
-            except (urllib.error.URLError, TimeoutError) as exc:
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                ConnectionError,
+                http.client.HTTPException,
+            ) as exc:
                 if attempt + 1 >= attempts:
                     raise ProviderError(f"{role} provider request failed: {exc}", attempts=attempts_used) from exc
                 _sleep_before_retry(attempt)
