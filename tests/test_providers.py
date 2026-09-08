@@ -120,6 +120,29 @@ def test_arbitrary_compatible_endpoint_supports_local_and_azure_style_auth(monke
     assert "model" not in calls[1][2]
 
 
+def test_provider_result_endpoint_redacts_url_credentials_and_queries(monkeypatch) -> None:
+    configured = replace(
+        settings,
+        extraction_base_url="https://gateway.example/v1",
+        extraction_model="arbitrary-model",
+        extraction_chat_path="https://user:secret@example.test/chat/completions?api_key=hidden",
+    )
+    monkeypatch.setattr(providers, "settings", configured)
+    monkeypatch.setattr(
+        providers.urllib.request,
+        "urlopen",
+        lambda _request, timeout: _Response(
+            {"choices": [{"message": {"content": json.dumps({"claims": []})}}]}
+        ),
+    )
+
+    result = providers.structured_chat("extraction", "system", "user")
+
+    assert result.endpoint == "https://example.test/chat/completions"
+    assert "secret" not in str(result)
+    assert "hidden" not in str(result)
+
+
 def test_empty_role_configuration_does_not_enable_shared_provider(monkeypatch) -> None:
     configured = replace(
         settings,

@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from .config import settings
 
@@ -32,6 +33,27 @@ class ProviderError(RuntimeError):
     def __init__(self, message: str, *, attempts: int = 1) -> None:
         super().__init__(message)
         self.attempts = max(1, int(attempts))
+
+
+def public_endpoint(value: str) -> str:
+    """Return endpoint identity without URL credentials or query parameters."""
+
+    raw = str(value or "")
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return raw.split("?", 1)[0].split("#", 1)[0]
+    if not parsed.scheme or not parsed.netloc:
+        return raw.split("?", 1)[0].split("#", 1)[0]
+    hostname = parsed.hostname or ""
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    netloc = hostname
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
 
 
 _ROLE_FIELDS: dict[str, dict[str, str]] = {
@@ -239,7 +261,7 @@ def _post(operation: str, payload: dict[str, Any], model: str, role: str, fallba
         output_tokens=output_tokens,
         estimated_cost=round(per_attempt_cost * attempts_used, 6),
         latency_ms=elapsed,
-        endpoint=url,
+        endpoint=public_endpoint(url),
         attempts=attempts_used,
     )
 

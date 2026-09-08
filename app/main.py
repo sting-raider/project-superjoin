@@ -9,7 +9,6 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
@@ -20,7 +19,7 @@ from .config import settings
 from .db import db, init_db, row_to_dict, rows_to_dicts, utc_now
 from .knowledge import assess_relationships, rebuild_workspace, resolve_fact, set_document_archived
 from .pipeline import process_document
-from .providers import ProviderError, available
+from .providers import ProviderError, available, public_endpoint
 from .retrieval import create_embedding_space, embed_claim, search_claims
 
 app = FastAPI(title="Project SuperJoin", version="0.1.0", description="Evidence-first temporal fact knowledge layer")
@@ -46,24 +45,9 @@ def _workspace_or_default(workspace_id: str | None) -> str:
 
 
 def _public_endpoint(value: str) -> str:
-    """Expose endpoint identity without returning URL credentials or queries."""
+    """Compatibility wrapper for the shared endpoint redaction helper."""
 
-    raw = str(value or "")
-    if not raw:
-        return ""
-    try:
-        parsed = urlsplit(raw)
-    except ValueError:
-        return raw.split("?", 1)[0].split("#", 1)[0]
-    if not parsed.scheme or not parsed.netloc:
-        return raw.split("?", 1)[0].split("#", 1)[0]
-    hostname = parsed.hostname or ""
-    if ":" in hostname and not hostname.startswith("["):
-        hostname = f"[{hostname}]"
-    netloc = hostname
-    if parsed.port is not None:
-        netloc = f"{netloc}:{parsed.port}"
-    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+    return public_endpoint(value)
 
 
 @app.get("/api/v1/health")
