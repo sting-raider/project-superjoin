@@ -69,13 +69,15 @@ def profile_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
                 stage["counters"] = json.loads(stage.pop("counters_json") or "{}")
             except json.JSONDecodeError:
                 stage["counters"] = {}
+    claim_row = dict(claims)
+    claim_counts = {key: int(value or 0) for key, value in claim_row.items()}
     return {
         "run": dict(run),
         "observed_elapsed_seconds": _elapsed_seconds(run["created_at"], run["updated_at"]),
         "document": dict(document) if document else None,
         "model_calls": [dict(row) for row in call_rows],
         "extraction": dict(batch) if batch else {},
-        "claims": {key: int(claims[key] or 0) for key in claims},
+        "claims": claim_counts,
         "persisted_claims": int(claims["count"] or 0),
         "stages": stages,
         "network_calls": sum(
