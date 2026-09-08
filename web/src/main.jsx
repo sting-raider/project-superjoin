@@ -173,8 +173,25 @@ function Changes({ overview, changes }) {
 }
 
 function Runs({ runs, onRefresh }) {
+  const [expandedRunId, setExpandedRunId] = useState(null)
+  const [callsByRun, setCallsByRun] = useState({})
+  const [loadingRunId, setLoadingRunId] = useState(null)
+  const [telemetryError, setTelemetryError] = useState('')
   const act = async (run, path) => { try { await post(`/runs/${run.id}/${path}`); onRefresh() } catch (error) { /* the app-level notice remains available for the next refresh */ onRefresh() } }
-  return <div className="content"><div className="section-heading"><div><span className="eyebrow">OBSERVABILITY</span><h2>Runs</h2><p>Durable parser, extraction, and publication progress for this workspace.</p></div></div><div className="panel run-list">{runs.length ? runs.map((run) => <div className="run-row" key={run.id}><div><strong>{run.mode} · {run.id}</strong><small>{run.message || 'Queued'} · updated {run.updated_at}</small></div><div className="run-progress"><Badge tone={run.status === 'complete' ? 'good' : run.status === 'failed' ? 'bad' : run.status === 'cancelled' ? 'neutral' : 'warn'}>{run.status}</Badge><span>{run.progress}%</span><i aria-hidden="true"><b style={{ width: `${run.progress || 0}%` }} /></i><div className="run-actions">{['queued', 'processing'].includes(run.status) && <button className="text-button" onClick={() => act(run, 'cancel')}>Cancel</button>}{['failed', 'cancelled'].includes(run.status) && <button className="text-button" onClick={() => act(run, 'resume')}>Resume</button>}</div></div></div>) : <div className="empty">No runs recorded for this workspace yet.</div>}</div></div>
+  const inspectTelemetry = async (run) => {
+    if (expandedRunId === run.id) { setExpandedRunId(null); return }
+    setExpandedRunId(run.id); setTelemetryError('')
+    if (callsByRun[run.id]) return
+    setLoadingRunId(run.id)
+    try {
+      const data = await get(`/runs/${run.id}/model-calls`)
+      setCallsByRun((current) => ({ ...current, [run.id]: data.items || [] }))
+    } catch (error) { setTelemetryError(error.message || 'Unable to load model telemetry') } finally { setLoadingRunId(null) }
+  }
+  const calls = expandedRunId ? (callsByRun[expandedRunId] || []) : []
+  const spend = calls.reduce((total, call) => total + Number(call.estimated_cost || 0), 0)
+  const cacheHits = calls.reduce((total, call) => total + Number(call.cache_hit || 0), 0)
+  return <div className="content"><div className="section-heading"><div><span className="eyebrow">OBSERVABILITY</span><h2>Runs</h2><p>Durable parser, extraction, and publication progress for this workspace.</p></div></div><div className="panel run-list">{runs.length ? runs.map((run) => <React.Fragment key={run.id}><div className="run-row"><div><strong>{run.mode} · {run.id}</strong><small>{run.message || 'Queued'} · updated {run.updated_at}</small></div><div className="run-progress"><Badge tone={run.status === 'complete' ? 'good' : run.status === 'failed' ? 'bad' : run.status === 'cancelled' ? 'neutral' : 'warn'}>{run.status}</Badge><span>{run.progress}%</span><i aria-hidden="true"><b style={{ width: `${run.progress || 0}%` }} /></i><div className="run-actions">{['queued', 'processing'].includes(run.status) && <button className="text-button" onClick={() => act(run, 'cancel')}>Cancel</button>}{['failed', 'cancelled'].includes(run.status) && <button className="text-button" onClick={() => act(run, 'resume')}>Resume</button>}<button className="text-button" aria-expanded={expandedRunId === run.id} onClick={() => inspectTelemetry(run)}>{expandedRunId === run.id ? 'Hide telemetry' : 'Inspect telemetry'}</button></div></div></div>{expandedRunId === run.id && <div className="run-telemetry" role="region" aria-label={`Model telemetry for ${run.id}`}>{loadingRunId === run.id ? <div className="empty">Loading model telemetry…</div> : telemetryError ? <div className="empty">{telemetryError}</div> : <><div className="telemetry-summary"><span><strong>{calls.length}</strong> calls</span><span><strong>${spend.toFixed(4)}</strong> spend</span><span><strong>{cacheHits}</strong> cache hits</span></div>{calls.length ? <table><thead><tr><th scope="col">ROLE</th><th scope="col">MODEL</th><th scope="col">STATUS</th><th scope="col">TOKENS</th><th scope="col">LATENCY</th><th scope="col">ATTEMPTS</th><th scope="col">COST</th></tr></thead><tbody>{calls.map((call) => <tr key={call.id}><td>{call.role}</td><td className="mono">{call.model || '—'}</td><td><Badge tone={call.status === 'complete' ? 'good' : call.status === 'failed' ? 'bad' : 'warn'}>{call.status}</Badge></td><td className="mono">{call.input_tokens || 0} / {call.output_tokens || 0}</td><td className="mono">{call.latency_ms == null ? '—' : `${call.latency_ms} ms`}</td><td className="mono">{call.attempts || 1}</td><td className="mono">${Number(call.estimated_cost || 0).toFixed(4)}</td></tr>)}</tbody></table> : <div className="empty">No model calls recorded for this run. Recorded demo replay intentionally stays offline.</div>}</>}</div>}</React.Fragment>) : <div className="empty">No runs recorded for this workspace yet.</div>}</div></div>
 }
 
 function Settings() {
