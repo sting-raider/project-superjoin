@@ -23,6 +23,7 @@ def profile_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
         raise ValueError(f"Run not found: {run_id}")
     call_rows = conn.execute(
         """SELECT role,status,COUNT(*) AS calls,
+        SUM(COALESCE(request_chars,0)) AS request_chars,
         SUM(COALESCE(input_tokens,0)) AS input_tokens,
         SUM(COALESCE(output_tokens,0)) AS output_tokens,
         SUM(COALESCE(latency_ms,0)) AS provider_latency_ms,
@@ -45,16 +46,38 @@ def profile_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
         "SELECT page_count,status FROM documents WHERE id=?", (run["document_id"],)
     ).fetchone()
     claims = conn.execute(
-        "SELECT COUNT(*) AS count FROM claims WHERE document_id=?",
+        """SELECT COUNT(*) AS count,
+        SUM(CASE WHEN extraction_status='accepted' THEN 1 ELSE 0 END) AS accepted,
+        SUM(CASE WHEN extraction_status='provisional' THEN 1 ELSE 0 END) AS provisional
+        FROM claims WHERE document_id=?""",
         (run["document_id"],),
     ).fetchone()
+    stages = []
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='run_stage_timings'"
+    ).fetchone():
+        stages = [
+            dict(row)
+            for row in conn.execute(
+                """SELECT stage,duration_ms,current_count,total_count,counters_json
+                FROM run_stage_timings WHERE run_id=? ORDER BY started_at,stage""",
+                (run_id,),
+            ).fetchall()
+        ]
+        for stage in stages:
+            try:
+                stage["counters"] = json.loads(stage.pop("counters_json") or "{}")
+            except json.JSONDecodeError:
+                stage["counters"] = {}
     return {
         "run": dict(run),
         "observed_elapsed_seconds": _elapsed_seconds(run["created_at"], run["updated_at"]),
         "document": dict(document) if document else None,
         "model_calls": [dict(row) for row in call_rows],
         "extraction": dict(batch) if batch else {},
-        "persisted_claims": int(claims["count"]),
+        "claims": {key: int(claims[key] or 0) for key in claims},
+        "persisted_claims": int(claims["count"] or 0),
+        "stages": stages,
         "network_calls": sum(
             int(row["calls"])
             for row in call_rows

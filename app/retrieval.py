@@ -114,7 +114,14 @@ def embed_claim(claim_id: str, space_id: str) -> dict[str, Any]:
         return {"claim_id": claim_id, "space_id": space_id, "dimensions": cached["dimensions"], "content_hash": content_hash, "cached": True}
     reservation = None
     try:
-        reservation = reserve(None, "embedding", space["model"], content_hash, estimate_cost(len(text), 32))
+        reservation = reserve(
+            None,
+            "embedding",
+            space["model"],
+            content_hash,
+            estimate_cost(len(text), 32),
+            request_chars=len(text),
+        )
         result = embed(text, space["model"])
         vector = _extract_vector(result.data)
     except (BudgetExceeded, ProviderError, ValueError) as exc:
@@ -153,7 +160,14 @@ def embed_query(workspace_id: str, query: str, space_id: str | None = None) -> l
         return _extract_vector(json.loads(cached["response_json"]))
     reservation = None
     try:
-        reservation = reserve(None, "embedding-query", space["model"], digest, estimate_cost(len(query), 32))
+        reservation = reserve(
+            None,
+            "embedding-query",
+            space["model"],
+            digest,
+            estimate_cost(len(query), 32),
+            request_chars=len(query),
+        )
         result = embed(query, space["model"])
         vector = _extract_vector(result.data)
         if len(vector) != int(space["dimensions"]):

@@ -216,7 +216,7 @@ def run_model_calls(run_id: str) -> dict[str, Any]:
         if not conn.execute("SELECT 1 FROM runs WHERE id=?", (run_id,)).fetchone():
             raise HTTPException(404, "Run not found")
         rows = conn.execute(
-            """SELECT id,role,model,status,input_tokens,output_tokens,
+            """SELECT id,role,model,status,request_chars,input_tokens,output_tokens,
             estimated_cost,latency_ms,attempts,cache_hit,created_at
             FROM model_calls WHERE run_id=? ORDER BY created_at,id""",
             (run_id,),

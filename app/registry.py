@@ -508,6 +508,7 @@ def _registry_embeddings(
             model,
             batch_digest,
             estimate_cost(sum(len(text) for text in batch), 0),
+            request_chars=sum(len(text) for text in batch),
         )
         try:
             result = embed(batch, model)
@@ -607,6 +608,7 @@ def _semantic_resolution(
             model,
             digest,
             estimate_cost(len(compact), settings.reasoning_max_output_tokens),
+            request_chars=len(compact),
         )
         result = structured_chat(
             "reasoning",

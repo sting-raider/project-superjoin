@@ -32,7 +32,15 @@ def estimate_cost(input_chars: int, max_output_tokens: int = 1200, attempts: int
     return round(per_attempt * retry_envelope, 6)
 
 
-def reserve(run_id: str | None, role: str, model: str, input_hash: str, amount: float) -> Reservation:
+def reserve(
+    run_id: str | None,
+    role: str,
+    model: str,
+    input_hash: str,
+    amount: float,
+    *,
+    request_chars: int | None = None,
+) -> Reservation:
     amount = max(0.0, float(amount))
     reservation_id = f"reservation-{uuid.uuid4().hex[:12]}"
     with db() as conn:
@@ -42,8 +50,18 @@ def reserve(run_id: str | None, role: str, model: str, input_hash: str, amount: 
             raise BudgetExceeded(f"AI budget exhausted; requested reservation ${amount:.6f}")
         conn.execute("UPDATE budget_ledger SET reserved_usd=reserved_usd+?,updated_at=? WHERE id=1", (amount, utc_now()))
         conn.execute(
-            "INSERT INTO model_calls(id,run_id,role,model,input_hash,status,reserved_usd,created_at) VALUES(?,?,?,?,?,?,?,?)",
-            (reservation_id, run_id, role, model, input_hash, "reserved", amount, utc_now()),
+            "INSERT INTO model_calls(id,run_id,role,model,input_hash,status,reserved_usd,request_chars,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                reservation_id,
+                run_id,
+                role,
+                model,
+                input_hash,
+                "reserved",
+                amount,
+                request_chars,
+                utc_now(),
+            ),
         )
     return Reservation(reservation_id, amount)
 

@@ -306,6 +306,7 @@ CREATE TABLE IF NOT EXISTS model_calls (
   input_hash TEXT NOT NULL,
   status TEXT NOT NULL,
   input_tokens INTEGER,
+  request_chars INTEGER,
   output_tokens INTEGER,
   estimated_cost REAL NOT NULL DEFAULT 0,
   latency_ms INTEGER,
@@ -432,6 +433,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
 
     additions = {
         "model_calls": {
+            "request_chars": "INTEGER",
             "reserved_usd": "REAL NOT NULL DEFAULT 0",
             "cache_hit": "INTEGER NOT NULL DEFAULT 0",
             "attempts": "INTEGER NOT NULL DEFAULT 1",
