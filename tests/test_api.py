@@ -14,6 +14,7 @@ from app.main import _public_endpoint, app
 def test_public_endpoint_redacts_url_credentials_and_query() -> None:
     assert _public_endpoint("https://user:secret@example.test/v1?api_key=hidden#fragment") == "https://example.test/v1"
     assert _public_endpoint("http://[::1]:11434/v1?token=hidden") == "http://[::1]:11434/v1"
+    assert _public_endpoint("/openai/deployments/model/chat/completions?api-version=hidden") == "/openai/deployments/model/chat/completions"
 
 
 def _fact_id(client, workspace_id: str, subject: str, predicate: str, period: str) -> str:
