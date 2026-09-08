@@ -91,7 +91,7 @@ live model work. The recorder's `--redact-source` mode masks source names,
 values, evidence text, and provider outputs before the first page paint for a
 rights-safe public walkthrough. Reproducible capture steps are in
 [`docs/VIDEO_DEMO_SCRIPT.md`](docs/VIDEO_DEMO_SCRIPT.md); the public release
-link is added only after the redacted asset passes the rights preflight.
+link is the [public redacted walkthrough](https://github.com/sting-raider/project-superjoin/releases/download/demo-video-v1/project-superjoin-public.mp4).
 
 ## Approach
 
@@ -131,9 +131,10 @@ The repository currently ships a compact recorded demo rather than third-party
 source PDFs. The parser comparison and bounded NVIDIA NIM extraction/embedding
 selection reports are included as measured development evidence; they use
 small synthetic or locally supplied inputs and do not claim full-corpus quality.
-A broader provider comparison and final video require additional external
-inputs. The recorded replay exercises the production registry, relationship,
-and fact publication stages without pretending to be a live model run.
+A broader provider comparison and source-cleared video require additional
+external inputs. The published redacted walkthrough exercises the production
+registry, relationship, and canonical fact publication stages without
+pretending to be a live model run.
 
 Low-resolution scans, handwriting, complex charts, and ambiguous cross-page
 tables can remain quarantined. Filtered vector search is an exact bounded scan

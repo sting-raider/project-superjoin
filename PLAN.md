@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: implementation is continuing under the approved plan. The production-generalization correction and provider-neutral transport are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and live NVIDIA extraction/selection evidence is recorded; source clearances and the final video remain external inputs.
+Status: implementation is continuing under the approved plan. The production-generalization correction and provider-neutral transport are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and live NVIDIA extraction/selection evidence is recorded. A rights-safe redacted walkthrough is published as a release asset; source clearances for source-bearing artifacts remain external inputs.
 
 ## 1. Outcome and governing decisions
 
@@ -334,10 +334,15 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   assumptions or leaking local storage paths.
 
 - An optional Playwright recorder now drives the real local no-key UI, adds
-  truthful captions, and never opens source-PDF links. A locally rendered
-  29.6-second 1440x900 MP4 passed `scripts/check_video.py`; the final public
-  release link remains intentionally unchecked until visible demo evidence
-  passes the source-rights publication gate.
+  truthful captions, and never opens source-PDF links. Its `--redact-source`
+  mode masks source-derived names, values, evidence text, and provider outputs
+  before the first page paint. The resulting 29.64-second 1440x900 MP4 passed
+  `scripts/check_video.py` and is published at
+  `https://github.com/sting-raider/project-superjoin/releases/download/demo-video-v1/project-superjoin-public.mp4`.
+  SHA-256 is
+  `c671ea13598224922c8803cc0dadeff615f43429a6b0a2da1d435e20be0ec229`;
+  release verification returned HTTP 200. The full source-bearing capture
+  remains local.
 
 - The source-rights audit was refreshed against the current official policy
   URLs on 2026-09-08. Delhivery, India Budget, and IMF reuse terms still do not
@@ -1559,7 +1564,8 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] No giant final commit substitutes for incremental development history.
 - [x] All completed implementation work is committed and pushed to `main`.
 - [x] README contains every required section.
-- [ ] Video is at most three minutes and its link works.
+- [x] Video is at most three minutes and its link works; the published asset is
+  the rights-safe redacted walkthrough described above.
 
 ### Honest limitations and future work
 

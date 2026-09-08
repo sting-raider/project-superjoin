@@ -53,7 +53,9 @@ ffmpeg -y -i "$env:TEMP\project-superjoin-public.webm" -c:v libx264 -pix_fmt yuv
 python scripts/check_video.py "$env:TEMP\project-superjoin-public.mp4"
 ```
 
-The current local redacted capture measured 29.6 seconds at 1440x900 and
-passed the video preflight. A public release must link this redacted output
-explicitly; the full source-bearing capture and source PDFs remain local until
-their permissions are recorded in [`DATASET_REDISTRIBUTION.md`](DATASET_REDISTRIBUTION.md).
+The current redacted capture measured 29.64 seconds at 1440x900 and passed the
+video preflight. The verified public asset is the [Project SuperJoin redacted
+walkthrough](https://github.com/sting-raider/project-superjoin/releases/download/demo-video-v1/project-superjoin-public.mp4)
+(SHA-256 `c671ea13598224922c8803cc0dadeff615f43429a6b0a2da1d435e20be0ec229`).
+The full source-bearing capture and source PDFs remain local until their
+permissions are recorded in [`DATASET_REDISTRIBUTION.md`](DATASET_REDISTRIBUTION.md).

@@ -65,3 +65,19 @@ allowlist review.
 Recorded demo claims are limited to the compact, source-linked evidence needed
 for the assignment cases. They are marked as recorded demo data in the UI and
 must not be represented as a redistribution of the underlying publications.
+
+## Public redacted walkthrough
+
+The repository release contains a 29.64-second MP4 generated with the
+recorder's `--redact-source` mode:
+
+<https://github.com/sting-raider/project-superjoin/releases/download/demo-video-v1/project-superjoin-public.mp4>
+
+The capture was reviewed frame-by-frame after recording. Source-derived names,
+values, evidence text, and provider outputs are masked before the first page
+paint; only generic interface labels, captions, and the no-key recorded-mode
+workflow remain visible. The asset passed `scripts/check_video.py`, returned
+HTTP 200 from the release URL, and has SHA-256
+`c671ea13598224922c8803cc0dadeff615f43429a6b0a2da1d435e20be0ec229`.
+This release does not clear or redistribute the original PDFs or copied source
+evidence.
