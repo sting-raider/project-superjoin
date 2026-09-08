@@ -24,7 +24,7 @@ from .security import untrusted_document_block
 REGISTRY_RELATIONS = {"equivalent", "broader", "narrower", "related", "new", "uncertain"}
 SEMANTIC_CANDIDATE_THRESHOLD = 0.68
 SEMANTIC_LEXICAL_THRESHOLD = 0.72
-SEMANTIC_EMBEDDING_THRESHOLD = 0.84
+SEMANTIC_EMBEDDING_THRESHOLD = 0.90
 
 _workspace_locks_guard = threading.Lock()
 _workspace_locks: dict[str, threading.Lock] = {}
@@ -231,6 +231,7 @@ def _register_workspace_claims(workspace_id: str, run_id: str | None = None) -> 
     )
     entity_resolutions: dict[str, dict[str, Any]] = {}
     predicate_resolutions: dict[str, dict[str, Any]] = {}
+    semantic_budget = [max(0, settings.registry_semantic_limit)]
     for row in rows:
         evidence = json.loads(row["evidence_json"])
         entity_key = _name_key(row["subject"])
@@ -249,6 +250,7 @@ def _register_workspace_claims(workspace_id: str, run_id: str | None = None) -> 
                     entity_candidates,
                     run_id,
                     vectors=registry_vectors,
+                    semantic_budget=semantic_budget,
                 )
             )
             with db() as conn:
@@ -276,6 +278,7 @@ def _register_workspace_claims(workspace_id: str, run_id: str | None = None) -> 
                     run_id,
                     row["value_type"],
                     registry_vectors,
+                    semantic_budget,
                 )
             )
             with db() as conn:
@@ -373,6 +376,7 @@ def _resolve_staged(
     run_id: str | None,
     value_kind: str = "text",
     vectors: dict[str, list[float]] | None = None,
+    semantic_budget: list[int] | None = None,
 ) -> dict[str, Any]:
     if not candidates:
         return _new_resolution(kind, source, value_kind)
@@ -386,6 +390,14 @@ def _resolve_staged(
     # Only exact identity, confirmed aliases, or a semantic decision can merge.
     combined = _merge_candidates(lexical, embedded)[:8]
     if _needs_semantic_resolution(lexical, embedded):
+        if semantic_budget is not None:
+            if semantic_budget[0] <= 0:
+                return {
+                    **_new_resolution(kind, source, value_kind),
+                    "match": "semantic_budget_deferred",
+                    "reason": "Semantic merge deferred; preserved as a distinct schema entry.",
+                }
+            semantic_budget[0] -= 1
         semantic = _semantic_resolution(
             workspace_id, kind, source, combined, value_kind, run_id
         )

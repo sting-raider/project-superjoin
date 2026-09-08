@@ -82,6 +82,7 @@ class Settings:
     vision_concurrency: int = _int_env("VISION_CONCURRENCY", 2)
     embedding_concurrency: int = _int_env("EMBEDDING_CONCURRENCY", 2)
     embedding_batch_size: int = _int_env("EMBEDDING_BATCH_SIZE", 128)
+    registry_semantic_limit: int = _int_env("REGISTRY_SEMANTIC_LIMIT", 4)
     extraction_structured_output_mode: str = _env("EXTRACTION_STRUCTURED_OUTPUT_MODE", "json_object")
     reasoning_structured_output_mode: str = _env("REASONING_STRUCTURED_OUTPUT_MODE", "json_object")
     vision_structured_output_mode: str = _env("VISION_STRUCTURED_OUTPUT_MODE", "json_object")

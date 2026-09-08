@@ -6,6 +6,7 @@ from app.config import settings
 from app.db import db, init_db, utc_now
 from app.registry import (
     _registry_embeddings,
+    _resolve_staged,
     observe_claim_schema,
     resolve_predicate,
 )
@@ -178,3 +179,28 @@ def test_unrelated_concept_is_created_without_semantic_round_trip(
         assert result["relation"] == "new"
     finally:
         _restore_database(original_database, original_upload)
+
+
+def test_ingestion_semantic_budget_preserves_excess_ambiguity_as_distinct(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("app.registry._embedding_candidates", lambda *args: [])
+    monkeypatch.setattr(
+        "app.registry._semantic_resolution",
+        lambda *args: (_ for _ in ()).throw(
+            AssertionError("semantic resolver exceeded ingestion budget")
+        ),
+    )
+
+    result = _resolve_staged(
+        "w",
+        "predicate",
+        "manufacturing_line_capacity",
+        [{"id": "predicate-capacity", "label": "manufacturing_capacity"}],
+        "run",
+        "number",
+        semantic_budget=[0],
+    )
+
+    assert result["status"] == "new"
+    assert result["match"] == "semantic_budget_deferred"
