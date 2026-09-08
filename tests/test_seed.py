@@ -105,3 +105,34 @@ def test_recorded_replay_is_offline_safe_without_provider_requests(monkeypatch, 
     finally:
         object.__setattr__(settings, "database_path", original_database)
         object.__setattr__(settings, "upload_dir", original_upload)
+
+
+def test_recorded_snapshot_exposes_offline_runs_and_events(tmp_path: Path) -> None:
+    original_database = settings.database_path
+    original_upload = settings.upload_dir
+    object.__setattr__(settings, "database_path", tmp_path / "runs.sqlite3")
+    object.__setattr__(settings, "upload_dir", tmp_path / "uploads")
+    try:
+        init_db()
+        seed_demo(["delhivery-presentation"])
+        with db() as conn:
+            run = conn.execute(
+                "SELECT mode,status,progress,message FROM runs WHERE id='demo-run-delhivery-presentation'"
+            ).fetchone()
+            events = conn.execute(
+                "SELECT progress,message FROM run_events WHERE run_id='demo-run-delhivery-presentation' ORDER BY id"
+            ).fetchall()
+            calls = conn.execute(
+                "SELECT COUNT(*) AS count FROM model_calls WHERE run_id='demo-run-delhivery-presentation'"
+            ).fetchone()
+        assert dict(run) == {
+            "mode": "recorded-demo",
+            "status": "complete",
+            "progress": 100,
+            "message": "Recorded snapshot; no API calls.",
+        }
+        assert [row["progress"] for row in events] == [5, 24, 60, 78, 100]
+        assert calls["count"] == 0
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+        object.__setattr__(settings, "upload_dir", original_upload)

@@ -4,6 +4,7 @@ import hashlib
 import json
 import time
 from collections.abc import Iterable
+from typing import Any
 
 from .config import settings
 from .db import db, utc_now
@@ -49,6 +50,7 @@ def seed_demo(document_ids: Iterable[str] | None = None) -> None:
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (document["id"], document["workspace_id"], document["name"], document["publisher"], document["source_url"], digest, document["page_count"], "complete", "recorded-demo", 0.96, document["published_at"], utc_now()),
             )
+            _seed_recorded_run(conn, document)
         for claim in claims:
             created_at = utc_now()
             conn.execute(
@@ -89,6 +91,44 @@ def seed_demo(document_ids: Iterable[str] | None = None) -> None:
         _seed_recorded_reasoning_outputs(workspace["id"])
         assess_relationships(workspace["id"])
         rebuild_workspace(workspace["id"], advance_revision=False)
+
+
+def _seed_recorded_run(conn: Any, document: dict[str, Any]) -> None:
+    """Expose the recorded snapshot's offline lifecycle in the Runs view."""
+
+    run_id = f"demo-run-{document['id']}"
+    created_at = utc_now()
+    conn.execute(
+        """INSERT OR IGNORE INTO runs
+        (id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?)""",
+        (
+            run_id,
+            document["workspace_id"],
+            document["id"],
+            "recorded-demo",
+            "complete",
+            100,
+            "Recorded snapshot; no API calls.",
+            created_at,
+            created_at,
+        ),
+    )
+    if conn.execute("SELECT 1 FROM run_events WHERE run_id=? LIMIT 1", (run_id,)).fetchone():
+        return
+    stages = (
+        (5, "Recorded snapshot initialized"),
+        (24, "Recorded page artifacts loaded"),
+        (60, "Recorded claims loaded"),
+        (78, "Registry and relationships replayed"),
+        (100, "Recorded snapshot complete; no API calls"),
+    )
+    details = json.dumps({"recorded": True, "model_calls": 0}, sort_keys=True)
+    for progress, message in stages:
+        conn.execute(
+            "INSERT INTO run_events(run_id,event_type,progress,message,details_json,created_at) VALUES(?,?,?,?,?,?)",
+            (run_id, "recorded", progress, message, details, created_at),
+        )
 
 
 def clear_demo_workspace_data(workspace_ids: Iterable[str] | None = None) -> None:
