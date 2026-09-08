@@ -83,6 +83,14 @@ def _id(prefix: str) -> str:
 
 def process_document(run_id: str, document_id: str, workspace_id: str, data: bytes, filename: str) -> None:
     """Process an uploaded PDF with resumable stage updates and deterministic fallback."""
+    heartbeat_stop = threading.Event()
+    heartbeat = threading.Thread(
+        target=_heartbeat_run,
+        args=(run_id, heartbeat_stop),
+        name=f"run-heartbeat-{run_id}",
+        daemon=True,
+    )
+    heartbeat.start()
     try:
         started_at = utc_now()
         _start_stage(run_id, "parse", 1, "Parsing PDF")
@@ -160,6 +168,9 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
         _mark_provisional(run_id, "failed")
         _update_document(document_id, status="failed")
         _update_stage(run_id, "failed", 1, 1, f"Failed: {exc}", status="failed")
+    finally:
+        heartbeat_stop.set()
+        heartbeat.join(timeout=1)
 
 
 def build_extraction_batches(
@@ -1016,6 +1027,30 @@ def _record_run_notice(run_id: str, message: str) -> None:
             "INSERT INTO run_events(run_id,event_type,progress,message,details_json,created_at) VALUES(?,?,?,?,?,?)",
             (run_id, "notice", progress, message, "{}", updated_at),
         )
+
+
+def _heartbeat_run(run_id: str, stop: threading.Event) -> None:
+    """Keep elapsed time and liveness current during long provider requests."""
+
+    while not stop.wait(2.0):
+        now = utc_now()
+        with db() as conn:
+            run = conn.execute(
+                "SELECT created_at,status FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if not run or run["status"] in {"complete", "failed", "cancelled"}:
+                return
+            elapsed_ms = round(
+                (
+                    datetime.fromisoformat(now)
+                    - datetime.fromisoformat(run["created_at"])
+                ).total_seconds()
+                * 1000
+            )
+            conn.execute(
+                "UPDATE runs SET heartbeat_at=?,elapsed_ms=? WHERE id=?",
+                (now, elapsed_ms, run_id),
+            )
 
 
 def _start_stage(run_id: str, stage: str, total: int, message: str) -> None:
