@@ -327,6 +327,12 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   timestamps. The UI refreshes it with the selected workspace so parser and
   publication activity is inspectable without opening developer tools.
 
+- The Documents view now opens a generic evidence inspector backed by
+  `/api/v1/documents/{id}`. It exposes parser/version quality metadata,
+  printed/PDF page mapping, page dispositions and flags, native character
+  counts, and the stored/source PDF link without embedding starter-specific
+  assumptions or leaking local storage paths.
+
 ### Resolved implementation simplifications
 
 - The runtime uses Python's `sqlite3` with an explicit schema initializer and

@@ -16,12 +16,12 @@ The table maps the approved plan to the implemented review surface. File names a
 | Human review and stale safety | `reviews`, review/revoke endpoints, fact-version checks | Review view; `tests/test_api.py` review flow |
 | Trust Gate | `resolve_fact`, `/api/v1/resolve` | Strict block, human-preference policy, and inspector panel |
 | Large/many PDF path | disk-backed upload, configurable 100 MB/2,000 page limits, page routing | Document upload contract; corpus preparation script |
-| Native plus visual fallback | parser quality flags, rendered page fallback, `page_artifacts` dispositions | IMF image-only-cover case and parser docs |
+| Native plus visual fallback | parser quality flags, rendered page fallback, `page_artifacts` dispositions | IMF image-only-cover case, parser docs, and the Documents evidence inspector |
 | Hybrid retrieval | FTS5 lexical lane, optional stored embeddings, reciprocal rank fusion | `/api/v1/search` metadata and retrieval tests |
 | Measured provider selection | `scripts/benchmark_models.py`, `scripts/benchmark_embeddings.py`, synthetic selection fixtures and reports | NIM extraction contract/grounding comparison; embedding dimensions and Recall@1/3/10/20 report |
 | Provider isolation and budget | role settings, arbitrary OpenAI-compatible transport, response cache, reservations/settlement, model-call ledger | Non-Gemini fake endpoint test; Settings screen; budget endpoint; no-key demo |
 | Prompt-injection safety | `app/security.py`, untrusted prompt boundaries, quarantine status | Five-case offline security report |
-| Superjoin-inspired UI | `web/src/styles.css`, `web/src/main.jsx` | Forest/green palette, facts table, evidence/trust side panel |
+| Superjoin-inspired UI | `web/src/styles.css`, `web/src/main.jsx` | Forest/green palette, facts table, document/page evidence inspector, evidence/trust side panel |
 | Evaluation and observability | `evals/`, `docs/EVALUATION.md`, run events, `/api/v1/runs/{run_id}/model-calls`, health/budget endpoints, Runs telemetry disclosure | CI and reproducible scripts; per-run role/status/token/latency/retry/cache/spend inspection |
 | Easy setup and demo mode | `Dockerfile`, `compose.yaml`, seeded replay records, README | `docker compose up --build`, localhost:8080 |
 | Interactive recorded replay | `app/seed.py`, `/api/v1/demo/replay/*`, `demo_replay_state`, sidebar controls | Start two-document checkpoint, continue third-document ingestion, reset scoped sandbox |
