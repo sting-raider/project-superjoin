@@ -70,6 +70,17 @@ def test_fact_inspector_keeps_both_revenue_evidence_anchors() -> None:
         }
 
 
+def test_document_detail_exposes_page_quality_and_source_metadata() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/documents/delhivery-annual")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["document"]["source_url"].startswith("https://")
+        assert payload["pages"]
+        first_page = payload["pages"][0]
+        assert {"page_number", "parser", "quality_score", "quality_flags", "disposition"} <= first_page.keys()
+
+
 def test_resolver_requires_period_for_temporal_role_history() -> None:
     with TestClient(app) as client:
         result = client.post("/api/v1/resolve", json={"workspace_id": "delhivery", "subject": "Suvir Suren Sujan", "predicate": "director_role"})
