@@ -1,6 +1,6 @@
 # Project SuperJoin — Complete Assignment Implementation Plan
 
-Status: implementation is continuing under the approved plan. The production-generalization correction and provider-neutral transport are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and a live NVIDIA extraction run is recorded; source clearances, comparative provider selection, and the final video remain external inputs.
+Status: implementation is continuing under the approved plan. The production-generalization correction and provider-neutral transport are implemented; benchmark outcomes, runtime evidence, and justified simplifications are recorded here. The starter rights audit and repository artifact preflight are complete, and live NVIDIA extraction/selection evidence is recorded; source clearances and the final video remain external inputs.
 
 ## 1. Outcome and governing decisions
 
@@ -48,6 +48,11 @@ The assignment PDF establishes the challenge and submission requirements. The su
 5. Audit redistribution rights before any starter PDF or derivative evidence artifact is committed or published; implement the packaging decision in Section 14.
 6. Keep the 1,000-page/50,000-claim synthetic benchmarks as desired, nonblocking validation.
 7. Keep immutable, auditable review records, resolution, revocation, and stale-decision safety mandatory; simplify elaborate concurrent review and merge/split machinery when it threatens correctness or completion.
+8. For the current provider-neutral development evidence, a configured live
+   OpenAI-compatible endpoint may replace the historical Gemini-only candidate
+   labels. The NIM extraction and embedding comparisons below are measured
+   synthetic selection inputs; native embedding dimensions are accepted when
+   the endpoint does not support the research profile’s 768-dimensional hint.
 
 All other product capabilities remain in scope. These amendments do not turn the project into an MVP or remove working brownie-point features.
 
@@ -158,6 +163,30 @@ The supplied screenshots establish the visual direction: forest green, bright gr
   and no dense-retrieval result. This is measured compatibility/coverage
   evidence, not a comparative model-selection claim; see
   `docs/MODEL_SELECTION.md` and `evals/reports/starter-corpus-e2e-nim.json`.
+- A provider-neutral development selection run now compares two live NIM chat
+  models on three synthetic out-of-domain cases. The requested
+  `nvidia/nemotron-3-super-120b-a12b` achieved 1.0 contract validity, 1.0
+  grounded-claim precision, and 0.5 expected-claim recall at 13,853.67 ms mean
+  provider latency and US$0.001784 total estimated cost. The
+  `nvidia/nemotron-3.5-lightning-30b-a3b` comparison achieved 1.0 contract
+  validity but 0.0 accepted recall, 35,471.67 ms latency, and US$0.002729
+  estimated cost. The current development extraction selection is therefore
+  the requested 120B model, with the small synthetic split and missed cases
+  disclosed rather than promoted to a release-quality claim. The report and
+  fixture are `evals/reports/extraction-model-selection-nim.json` and
+  `evals/fixtures/provider_selection.jsonl`.
+- A matching embedding compatibility/retrieval run tested eight synthetic
+  paraphrase pairs. `nvidia/nemotron-3-embed-1b` returned eight valid native
+  2048-dimensional vectors, Recall@10 1.0, Recall@3 0.75, and MRR 0.5771 at
+  US$0.005142 estimated cost. The comparison alias
+  `nvidia/llama-3.2-nemoretriever-300m-embed-v2` returned explicit HTTP 410
+  end-of-life errors for all eight requests. The optional dense development
+  configuration therefore uses the working model with
+  `EMBEDDING_DIMENSIONS=2048` and `EMBEDDING_INCLUDE_DIMENSIONS=false`; the
+  no-key demo continues to use lexical retrieval. See
+  `scripts/benchmark_embeddings.py`,
+  `evals/reports/embedding-model-selection-nim.json`, and
+  `evals/fixtures/embedding_selection.jsonl`.
 - The synthetic out-of-domain gold contract is now measured offline by
   `scripts/evaluate_gold_fixture.py`: five numeric records have 1.0
   value/page recall and 1.0 evidence-grounding precision, predicate-hint
@@ -755,7 +784,7 @@ Persist candidate counts and ranking explanations for debugging and evaluation.
 
 ### Embedding benchmark and selection
 
-Compare `gemini-embedding-001` and the current stable `gemini-embedding-2` option at **768 dimensions** on the same development candidate corpus. Verify actual model IDs and OpenAI-compatible endpoint access; do not substitute an obsolete preview alias without checking availability.
+Compare `gemini-embedding-001` and the current stable `gemini-embedding-2` option at **768 dimensions** on the same development candidate corpus when that provider profile is configured. For any provider-neutral profile, verify the actual model IDs, endpoint access, and native output dimensions; do not substitute an obsolete alias without checking availability.
 
 Measure Candidate Recall@10/20 on examples of the same underlying fact expressed with different wording, values, periods, or scope. Hold candidate populations, retrieval filters, and fusion parameters fixed; report dense-only and hybrid results separately so exact matching does not conceal weak vector recall.
 
@@ -1491,7 +1520,7 @@ The submission form linked in the PDF is delivery information, not authorization
 - [x] Demo data was generated by the pipeline; replay is explicitly labeled.
 - [x] A never-seen PDF processes through a configured compatible endpoint.
 - [x] Extraction, reasoning, vision, and embeddings can be configured independently without code changes.
-- [ ] Development comparisons select the parser, extractor, and embedding configuration with measured evidence and licensing/endpoint checks.
+- [x] Development comparisons select the parser, extractor, and embedding configuration with measured evidence and licensing/endpoint checks; the live selection uses the requested NIM extractor, a native 2048-dimensional NIM embedder, and lexical fallback when no provider is configured, with small-fixture limitations recorded.
 - [x] Every canonical supporting claim has valid, inspectable evidence.
 - [x] All four assignment cases are accessible in one click.
 - [x] Numeric and semantic temporal cases both work.

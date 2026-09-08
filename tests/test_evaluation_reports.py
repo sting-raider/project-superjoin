@@ -82,3 +82,35 @@ def test_live_nim_model_benchmark_records_nonsecret_compatible_contract() -> Non
     assert result["attempts"] >= 1
     assert result["provider_latency_ms"] >= 0
     assert "nvapi" not in report_path.read_text(encoding="utf-8").casefold()
+
+
+def test_live_nim_extraction_selection_report_records_measured_quality() -> None:
+    report_path = ROOT / "evals" / "reports" / "extraction-model-selection-nim.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "complete"
+    assert report["role"] == "extraction"
+    assert report["cases"] == 3
+    assert report["summaries"]["nvidia/nemotron-3-super-120b-a12b"]["contract_pass_rate"] == 1.0
+    assert report["summaries"]["nvidia/nemotron-3-super-120b-a12b"]["expected_claim_recall"] == 0.5
+    assert report["summaries"]["nvidia/nemotron-3-super-120b-a12b"]["grounded_claim_precision"] == 1.0
+    assert report["summaries"]["nvidia/nemotron-3.5-lightning-30b-a3b"]["expected_claim_recall"] == 0.0
+    assert "nvapi" not in report_path.read_text(encoding="utf-8").casefold()
+
+
+def test_live_nim_embedding_selection_report_records_dimensions_and_failures() -> None:
+    report_path = ROOT / "evals" / "reports" / "embedding-model-selection-nim.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "complete"
+    assert report["role"] == "embedding"
+    assert report["cases"] == 8
+    working, retired = report["results"]
+    assert working["status"] == "complete"
+    assert working["observed_dimensions"] == [2048]
+    assert working["valid_vectors"] == 8
+    assert working["retrieval"]["recall_at_10"] == 1.0
+    assert retired["status"] == "partial"
+    assert retired["valid_vectors"] == 0
+    assert all("HTTP 410" in item["error"] for item in retired["errors"])
+    assert "nvapi" not in report_path.read_text(encoding="utf-8").casefold()

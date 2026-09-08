@@ -1,0 +1,88 @@
+{
+  "status": "complete",
+  "role": "embedding",
+  "candidates": [
+    "nvidia/nemotron-3-embed-1b",
+    "nvidia/llama-3.2-nemoretriever-300m-embed-v2"
+  ],
+  "cases": 8,
+  "results": [
+    {
+      "model": "nvidia/nemotron-3-embed-1b",
+      "status": "complete",
+      "expected_dimensions": 2048,
+      "observed_dimensions": [
+        2048
+      ],
+      "valid_vectors": 8,
+      "calls": 8,
+      "attempts": 8,
+      "total_estimated_cost": 0.005142,
+      "total_provider_latency_ms": 4248,
+      "errors": [],
+      "retrieval": {
+        "queries": 8,
+        "candidate_count": 8,
+        "recall_at_1": 0.375,
+        "recall_at_3": 0.75,
+        "recall_at_10": 1.0,
+        "recall_at_20": 1.0,
+        "mean_reciprocal_rank": 0.5771
+      }
+    },
+    {
+      "model": "nvidia/llama-3.2-nemoretriever-300m-embed-v2",
+      "status": "partial",
+      "expected_dimensions": 2048,
+      "observed_dimensions": [],
+      "valid_vectors": 0,
+      "calls": 0,
+      "attempts": 0,
+      "total_estimated_cost": 0.0,
+      "total_provider_latency_ms": 1775,
+      "errors": [
+        {
+          "case": "arr-a",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        },
+        {
+          "case": "arr-b",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        },
+        {
+          "case": "retention-a",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        },
+        {
+          "case": "retention-b",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        },
+        {
+          "case": "capacity-a",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        },
+        {
+          "case": "capacity-b",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        },
+        {
+          "case": "appointment-a",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        },
+        {
+          "case": "appointment-b",
+          "error": "embedding provider HTTP 410: {\"type\":\"about:blank\",\"title\":\"Gone\",\"status\":410,\"detail\":\"The model 'nvidia/llama-3.2-nemoretriever-300m-embed-v2' has reached its end of life on 2026-02-26T00:00:00Z and is no longer available.\"}\n"
+        }
+      ],
+      "retrieval": {
+        "queries": 0,
+        "candidate_count": 0,
+        "recall_at_1": null,
+        "recall_at_3": null,
+        "recall_at_10": null,
+        "recall_at_20": null,
+        "mean_reciprocal_rank": null
+      }
+    }
+  ]
+}

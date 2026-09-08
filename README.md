@@ -119,12 +119,12 @@ the governing implementation and acceptance plan.
 ## Limitations and Next Steps
 
 The repository currently ships a compact recorded demo rather than third-party
-source PDFs. A full six-document, 511-page source-verified parser benchmark,
-live extraction/embedding model comparison, and final video require the local
-starter archive and optional provider credentials. The parser harness records
-these as explicit inputs; it does not claim unrun comparisons passed. The
-recorded replay exercises the production registry, relationship, and fact
-publication stages without pretending to be a live model run.
+source PDFs. The parser comparison and bounded NVIDIA NIM extraction/embedding
+selection reports are included as measured development evidence; they use
+small synthetic or locally supplied inputs and do not claim full-corpus quality.
+A broader provider comparison and final video require additional external
+inputs. The recorded replay exercises the production registry, relationship,
+and fact publication stages without pretending to be a live model run.
 
 Low-resolution scans, handwriting, complex charts, and ambiguous cross-page
 tables can remain quarantined. Filtered vector search is an exact bounded scan
