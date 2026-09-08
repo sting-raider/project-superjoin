@@ -1158,7 +1158,12 @@ def _deterministically_normalized(item: dict[str, Any]) -> dict[str, Any]:
         "missing",
     }:
         return normalized
-    parsed = parse_numeric(str(item.get("raw_value") or ""))
+    raw_value = str(item.get("raw_value") or "")
+    declared_unit = str(item.get("unit") or "").strip()
+    # Providers often place a table's currency/scale in the structured unit
+    # field rather than repeat it in every cell. Deterministic normalization
+    # must read both fields as one scalar context.
+    parsed = parse_numeric(f"{raw_value} {declared_unit}".strip())
     if parsed.get("value_type") == "text":
         return normalized
     normalized["normalized_value"] = parsed.get("normalized")

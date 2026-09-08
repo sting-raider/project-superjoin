@@ -402,6 +402,15 @@ def test_model_numeric_normalization_is_recomputed_deterministically() -> None:
     assert normalized["normalization_trace"] == ["parse-number", "scale:million"]
 
 
+def test_table_scale_in_structured_unit_is_applied_to_cell_value() -> None:
+    normalized = _deterministically_normalized(
+        {"raw_value": "8,142", "normalized_value": "8142", "value_type": "number", "unit": "INR crore"}
+    )
+    assert normalized["normalized_value"] == "81420000000"
+    assert normalized["value_type"] == "money"
+    assert normalized["unit"] == "INR"
+
+
 def test_no_key_visual_fallback_does_not_render(monkeypatch) -> None:
     monkeypatch.setattr("app.pipeline.available", lambda role=None: False)
     monkeypatch.setattr(
