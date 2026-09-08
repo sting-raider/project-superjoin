@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 import uuid
 from difflib import SequenceMatcher
 from typing import Any
@@ -22,10 +23,20 @@ from .security import untrusted_document_block
 
 REGISTRY_RELATIONS = {"equivalent", "broader", "narrower", "related", "new", "uncertain"}
 SEMANTIC_CANDIDATE_THRESHOLD = 0.68
+SEMANTIC_LEXICAL_THRESHOLD = 0.72
+SEMANTIC_EMBEDDING_THRESHOLD = 0.84
+
+_workspace_locks_guard = threading.Lock()
+_workspace_locks: dict[str, threading.Lock] = {}
 
 
 def _id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+def _workspace_lock(workspace_id: str) -> threading.Lock:
+    with _workspace_locks_guard:
+        return _workspace_locks.setdefault(workspace_id, threading.Lock())
 
 
 def _name_key(value: str) -> str:
@@ -77,22 +88,29 @@ def _materialize_resolution(
         "related",
     }
     if should_create:
-        target_id = _id(kind)
+        target_id = f"{kind}-" + input_hash(
+            "registry-v1", workspace_id, kind, _name_key(source)
+        )[:16]
         if kind == "entity":
             conn.execute(
-                "INSERT INTO entities(id,workspace_id,canonical_name,entity_type,status,created_at) VALUES(?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO entities(id,workspace_id,canonical_name,entity_type,status,created_at) VALUES(?,?,?,?,?,?)",
                 (target_id, workspace_id, source.strip(), "unknown", "active", utc_now()),
             )
+            row = conn.execute(
+                "SELECT id,canonical_name FROM entities WHERE id=? OR (workspace_id=? AND canonical_name=?) ORDER BY id LIMIT 1",
+                (target_id, workspace_id, source.strip()),
+            ).fetchone()
+            target_id = row["id"]
             resolution = {
                 **resolution,
                 "id": target_id,
-                "canonical_name": source.strip(),
+                "canonical_name": row["canonical_name"],
                 "status": "resolved",
             }
         else:
             key = _predicate_key(source)
             conn.execute(
-                "INSERT INTO predicates(id,workspace_id,key,definition,value_kind,status,created_at) VALUES(?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO predicates(id,workspace_id,key,definition,value_kind,status,created_at) VALUES(?,?,?,?,?,?,?)",
                 (
                     target_id,
                     workspace_id,
@@ -103,10 +121,16 @@ def _materialize_resolution(
                     utc_now(),
                 ),
             )
+            row = conn.execute(
+                "SELECT id,key,value_kind FROM predicates WHERE workspace_id=? AND key=?",
+                (workspace_id, key),
+            ).fetchone()
+            target_id = row["id"]
             resolution = {
                 **resolution,
                 "id": target_id,
-                "key": key,
+                "key": row["key"],
+                "value_kind": row["value_kind"],
                 "status": "resolved",
             }
     if resolution["status"] == "resolved" and evidence:
@@ -138,6 +162,13 @@ def _materialize_resolution(
 
 
 def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> int:
+    """Register unresolved vocabulary once per workspace to avoid write races."""
+
+    with _workspace_lock(workspace_id):
+        return _register_workspace_claims(workspace_id, run_id)
+
+
+def _register_workspace_claims(workspace_id: str, run_id: str | None = None) -> int:
     with db() as conn:
         rows = conn.execute(
             """SELECT c.id,c.subject,c.predicate,c.value_type,c.evidence_json
@@ -181,6 +212,23 @@ def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> i
     predicate_exact = {_predicate_key(row["label"]): row for row in predicate_candidates}
     entity_ids = {row["id"] for row in entity_candidates}
     predicate_ids = {row["id"] for row in predicate_candidates}
+    unresolved_texts = [
+        str(row["subject"])
+        for row in rows
+        if _name_key(row["subject"]) not in entity_exact
+        and _name_key(row["subject"]) not in entity_aliases
+    ] + [
+        str(row["predicate"])
+        for row in rows
+        if _predicate_key(row["predicate"]) not in predicate_exact
+        and _predicate_key(row["predicate"]) not in predicate_aliases
+    ]
+    candidate_texts = [str(row["label"]) for row in entity_candidates] + [
+        str(row["label"]) for row in predicate_candidates
+    ]
+    registry_vectors = _registry_embeddings(
+        [*unresolved_texts, *candidate_texts], run_id
+    )
     entity_resolutions: dict[str, dict[str, Any]] = {}
     predicate_resolutions: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -195,7 +243,12 @@ def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> i
                 _resolved(known_entity, "snapshot")
                 if known_entity
                 else _resolve_staged(
-                    workspace_id, "entity", row["subject"], entity_candidates, run_id
+                    workspace_id,
+                    "entity",
+                    row["subject"],
+                    entity_candidates,
+                    run_id,
+                    vectors=registry_vectors,
                 )
             )
             with db() as conn:
@@ -222,6 +275,7 @@ def register_workspace_claims(workspace_id: str, run_id: str | None = None) -> i
                     predicate_candidates,
                     run_id,
                     row["value_type"],
+                    registry_vectors,
                 )
             )
             with db() as conn:
@@ -318,15 +372,20 @@ def _resolve_staged(
     candidates: list[dict[str, Any]],
     run_id: str | None,
     value_kind: str = "text",
+    vectors: dict[str, list[float]] | None = None,
 ) -> dict[str, Any]:
     if not candidates:
         return _new_resolution(kind, source, value_kind)
     lexical = _lexical_candidates(source, candidates)
-    embedded = _embedding_candidates(source, candidates, run_id)
+    embedded = (
+        _embedding_candidates(source, candidates, run_id)
+        if vectors is None
+        else _embedding_candidates_from_vectors(source, candidates, vectors)
+    )
     # Similarity retrieves candidates; it does not establish equivalence.
     # Only exact identity, confirmed aliases, or a semantic decision can merge.
     combined = _merge_candidates(lexical, embedded)[:8]
-    if combined and combined[0]["score"] >= SEMANTIC_CANDIDATE_THRESHOLD:
+    if _needs_semantic_resolution(lexical, embedded):
         semantic = _semantic_resolution(
             workspace_id, kind, source, combined, value_kind, run_id
         )
@@ -340,6 +399,17 @@ def _resolve_staged(
             "candidates": combined,
         }
     return _new_resolution(kind, source, value_kind)
+
+
+def _needs_semantic_resolution(
+    lexical: list[dict[str, Any]], embedded: list[dict[str, Any]]
+) -> bool:
+    lexical_score = float(lexical[0]["score"]) if lexical else 0.0
+    embedding_score = float(embedded[0]["score"]) if embedded else 0.0
+    return (
+        lexical_score >= SEMANTIC_LEXICAL_THRESHOLD
+        or embedding_score >= SEMANTIC_EMBEDDING_THRESHOLD
+    )
 
 
 def _lexical_candidates(source: str, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -371,17 +441,28 @@ def _trigrams(value: str) -> set[str]:
 def _embedding_candidates(
     source: str, candidates: list[dict[str, Any]], run_id: str | None
 ) -> list[dict[str, Any]]:
-    if not available("embedding"):
-        return []
     try:
-        source_vector = _registry_embedding(source, run_id)
+        vectors = _registry_embeddings(
+            [source, *[str(candidate["label"]) for candidate in candidates[:100]]],
+            run_id,
+        )
     except (BudgetExceeded, ProviderError, ValueError):
+        return []
+    return _embedding_candidates_from_vectors(source, candidates, vectors)
+
+
+def _embedding_candidates_from_vectors(
+    source: str,
+    candidates: list[dict[str, Any]],
+    vectors: dict[str, list[float]],
+) -> list[dict[str, Any]]:
+    source_vector = vectors.get(source)
+    if not source_vector:
         return []
     scored = []
     for candidate in candidates[:100]:
-        try:
-            vector = _registry_embedding(str(candidate["label"]), run_id)
-        except (BudgetExceeded, ProviderError, ValueError):
+        vector = vectors.get(str(candidate["label"]))
+        if not vector:
             continue
         if len(vector) != len(source_vector):
             continue
@@ -390,51 +471,102 @@ def _embedding_candidates(
     return sorted(scored, key=lambda item: item["score"], reverse=True)
 
 
-def _registry_embedding(text: str, run_id: str | None) -> list[float]:
+def _registry_embeddings(
+    texts: list[str], run_id: str | None
+) -> dict[str, list[float]]:
+    """Embed unresolved vocabulary and candidate labels in bounded HTTP batches."""
+
+    ordered = list(dict.fromkeys(text.strip() for text in texts if text.strip()))
+    if not ordered or not available("embedding"):
+        return {}
     model = settings.embedding_model
-    digest = input_hash("registry-embedding-v1", provider_identity("embedding", model), text)
+    identity = provider_identity("embedding", model)
+    digests = {
+        text: input_hash("registry-embedding-v1", identity, text) for text in ordered
+    }
+    cached_vectors: dict[str, list[float]] = {}
     with db() as conn:
-        cached = conn.execute(
-            "SELECT response_json FROM model_cache WHERE role='registry-embedding' AND model=? AND input_hash=?",
-            (model, digest),
-        ).fetchone()
-    if cached:
-        return [float(value) for value in json.loads(cached["response_json"])]
-    reservation = reserve(run_id, "registry-embedding", model, digest, estimate_cost(len(text), 16))
-    try:
-        result = embed(text, model)
-        data = result.data
-        rows = data.get("data") if isinstance(data, dict) else None
-        vector = rows[0].get("embedding") if rows and isinstance(rows[0], dict) else data
-        if not isinstance(vector, list) or not vector:
-            raise ValueError("provider returned no registry embedding")
-        norm = math.sqrt(sum(float(value) ** 2 for value in vector)) or 1.0
-        normalized = [float(value) / norm for value in vector]
-    except Exception as exc:
-        settle(reservation, 0.0, status="failed", attempts=getattr(exc, "attempts", 1))
-        raise
-    settle(
-        reservation,
-        result.estimated_cost,
-        input_tokens=result.input_tokens,
-        output_tokens=result.output_tokens,
-        latency_ms=result.latency_ms,
-        attempts=result.attempts,
-    )
-    with db() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)",
-            (
-                _id("cache"),
-                "registry-embedding",
-                model,
-                digest,
-                json.dumps(normalized),
-                result.estimated_cost,
-                utc_now(),
-            ),
+        for text in ordered:
+            cached = conn.execute(
+                "SELECT response_json FROM model_cache WHERE role='registry-embedding' AND model=? AND input_hash=?",
+                (model, digests[text]),
+            ).fetchone()
+            if cached:
+                cached_vectors[text] = [
+                    float(value) for value in json.loads(cached["response_json"])
+                ]
+    missing = [text for text in ordered if text not in cached_vectors]
+    batch_size = max(1, settings.embedding_batch_size)
+    for start in range(0, len(missing), batch_size):
+        batch = missing[start : start + batch_size]
+        batch_digest = input_hash(
+            "registry-embedding-batch-v1", identity, *batch
         )
-    return normalized
+        reservation = reserve(
+            run_id,
+            "registry-embedding",
+            model,
+            batch_digest,
+            estimate_cost(sum(len(text) for text in batch), 0),
+        )
+        try:
+            result = embed(batch, model)
+            data = result.data
+            rows = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(rows, list) or len(rows) != len(batch):
+                raise ValueError(
+                    f"embedding batch size mismatch: expected {len(batch)}, got {len(rows or [])}"
+                )
+            rows = sorted(rows, key=lambda row: int(row.get("index", 0)))
+            normalized_batch: dict[str, list[float]] = {}
+            dimensions: set[int] = set()
+            for text, row in zip(batch, rows, strict=True):
+                vector = row.get("embedding") if isinstance(row, dict) else None
+                if not isinstance(vector, list) or not vector:
+                    raise ValueError("provider returned an empty registry embedding")
+                dimensions.add(len(vector))
+                norm = math.sqrt(sum(float(value) ** 2 for value in vector)) or 1.0
+                normalized_batch[text] = [float(value) / norm for value in vector]
+            if len(dimensions) != 1:
+                raise ValueError("provider returned inconsistent embedding dimensions")
+        except Exception as exc:
+            settle(
+                reservation,
+                0.0,
+                status="failed",
+                attempts=getattr(exc, "attempts", 1),
+            )
+            raise
+        settle(
+            reservation,
+            result.estimated_cost,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            latency_ms=result.latency_ms,
+            attempts=result.attempts,
+        )
+        with db() as conn:
+            for text, vector in normalized_batch.items():
+                conn.execute(
+                    "INSERT OR IGNORE INTO model_cache(id,role,model,input_hash,response_json,estimated_cost,created_at) VALUES(?,?,?,?,?,?,?)",
+                    (
+                        _id("cache"),
+                        "registry-embedding",
+                        model,
+                        digests[text],
+                        json.dumps(vector),
+                        0.0,
+                        utc_now(),
+                    ),
+                )
+        cached_vectors.update(normalized_batch)
+    return cached_vectors
+
+
+def _registry_embedding(text: str, run_id: str | None) -> list[float]:
+    """Compatibility wrapper for callers that need one registry vector."""
+
+    return _registry_embeddings([text], run_id).get(text, [])
 
 
 def _semantic_resolution(

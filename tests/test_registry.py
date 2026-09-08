@@ -4,7 +4,11 @@ from pathlib import Path
 
 from app.config import settings
 from app.db import db, init_db, utc_now
-from app.registry import observe_claim_schema, resolve_predicate
+from app.registry import (
+    _registry_embeddings,
+    observe_claim_schema,
+    resolve_predicate,
+)
 
 
 def _use_database(path: Path):
@@ -112,5 +116,65 @@ def test_semantic_narrower_result_creates_a_distinct_predicate(monkeypatch, tmp_
             ).fetchone()
         assert decision["action"] == "narrower"
         assert decision["target_id"] == broad["id"]
+    finally:
+        _restore_database(original_database, original_upload)
+
+
+def test_registry_embeddings_batch_missing_strings_in_one_call(
+    monkeypatch, tmp_path: Path
+) -> None:
+    original_database, original_upload = _use_database(tmp_path / "batch.sqlite3")
+    calls: list[list[str]] = []
+    try:
+        monkeypatch.setattr("app.registry.available", lambda role=None: role == "embedding")
+
+        def fake_embed(texts, model=None):
+            calls.append(texts)
+            return type(
+                "Result",
+                (),
+                {
+                    "data": {
+                        "data": [
+                            {"index": index, "embedding": [float(index + 1), 1.0]}
+                            for index, _ in enumerate(texts)
+                        ]
+                    },
+                    "estimated_cost": 0.001,
+                    "input_tokens": 4,
+                    "output_tokens": 0,
+                    "latency_ms": 10,
+                    "attempts": 1,
+                },
+            )()
+
+        monkeypatch.setattr("app.registry.embed", fake_embed)
+        vectors = _registry_embeddings(["Nimbus Cloud", "ARR", "Nimbus Cloud"], None)
+
+        assert calls == [["Nimbus Cloud", "ARR"]]
+        assert set(vectors) == {"Nimbus Cloud", "ARR"}
+        assert all(round(sum(value * value for value in vector), 6) == 1 for vector in vectors.values())
+    finally:
+        _restore_database(original_database, original_upload)
+
+
+def test_unrelated_concept_is_created_without_semantic_round_trip(
+    monkeypatch, tmp_path: Path
+) -> None:
+    original_database, original_upload = _use_database(tmp_path / "unrelated.sqlite3")
+    try:
+        observe_claim_schema("w", "Example", "manufacturing_capacity", "number")
+        monkeypatch.setattr("app.registry._embedding_candidates", lambda *args: [])
+        monkeypatch.setattr(
+            "app.registry._semantic_resolution",
+            lambda *args: (_ for _ in ()).throw(
+                AssertionError("semantic resolver called for unrelated concept")
+            ),
+        )
+
+        result = resolve_predicate("w", "employee_churn_rate", "percentage")
+
+        assert result["status"] == "new"
+        assert result["relation"] == "new"
     finally:
         _restore_database(original_database, original_upload)
