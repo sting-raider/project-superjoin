@@ -18,6 +18,7 @@ The table maps the approved plan to the implemented review surface. File names a
 | Large/many PDF path | disk-backed upload, configurable 100 MB/2,000 page limits, page routing | Document upload contract; corpus preparation script |
 | Native plus visual fallback | parser quality flags, rendered page fallback, `page_artifacts` dispositions | IMF image-only-cover case and parser docs |
 | Hybrid retrieval | FTS5 lexical lane, optional stored embeddings, reciprocal rank fusion | `/api/v1/search` metadata and retrieval tests |
+| Measured provider selection | `scripts/benchmark_models.py`, `scripts/benchmark_embeddings.py`, synthetic selection fixtures and reports | NIM extraction contract/grounding comparison; embedding dimensions and Recall@1/3/10/20 report |
 | Provider isolation and budget | role settings, arbitrary OpenAI-compatible transport, response cache, reservations/settlement, model-call ledger | Non-Gemini fake endpoint test; Settings screen; budget endpoint; no-key demo |
 | Prompt-injection safety | `app/security.py`, untrusted prompt boundaries, quarantine status | Five-case offline security report |
 | Superjoin-inspired UI | `web/src/styles.css`, `web/src/main.jsx` | Forest/green palette, facts table, evidence/trust side panel |
@@ -27,4 +28,4 @@ The table maps the approved plan to the implemented review surface. File names a
 
 ## Explicitly bounded claims
 
-The repository does not claim live model quality without a provider key, does not claim the full 511-page parser benchmark without the source-verified archive, and does not redistribute starter PDFs before a rights audit. Those boundaries are part of the evidence-first behavior and are reflected in PLAN.md and the reports.
+The repository does not claim full-corpus live model quality from the bounded synthetic selection reports, does not claim the full 511-page parser benchmark without the source-verified archive, and does not redistribute starter PDFs before a rights audit. Those boundaries are part of the evidence-first behavior and are reflected in PLAN.md and the reports.
