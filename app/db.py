@@ -260,6 +260,17 @@ CREATE TABLE IF NOT EXISTS run_events (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_run_events_run ON run_events(run_id, id);
+CREATE TABLE IF NOT EXISTS run_stage_timings (
+  run_id TEXT NOT NULL REFERENCES runs(id),
+  stage TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  duration_ms INTEGER,
+  current_count INTEGER NOT NULL DEFAULT 0,
+  total_count INTEGER NOT NULL DEFAULT 0,
+  counters_json TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY(run_id, stage)
+);
 CREATE TABLE IF NOT EXISTS extraction_batches (
   id TEXT PRIMARY KEY,
   run_id TEXT REFERENCES runs(id),
@@ -425,7 +436,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "cache_hit": "INTEGER NOT NULL DEFAULT 0",
             "attempts": "INTEGER NOT NULL DEFAULT 1",
         },
-        "claims": {"precision": "INTEGER"},
+        "claims": {"precision": "INTEGER", "run_id": "TEXT"},
         "claim_interpretations": {
             "entity_id": "TEXT",
             "predicate_id": "TEXT",
@@ -437,7 +448,17 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "active": "INTEGER NOT NULL DEFAULT 1",
         },
         "fact_versions": {"alternatives_json": "TEXT NOT NULL DEFAULT '[]'"},
-        "runs": {"config_json": "TEXT NOT NULL DEFAULT '{}'", "document_id": "TEXT"},
+        "runs": {
+            "config_json": "TEXT NOT NULL DEFAULT '{}'",
+            "document_id": "TEXT",
+            "stage": "TEXT NOT NULL DEFAULT 'queued'",
+            "stage_current": "INTEGER NOT NULL DEFAULT 0",
+            "stage_total": "INTEGER NOT NULL DEFAULT 0",
+            "counters_json": "TEXT NOT NULL DEFAULT '{}'",
+            "heartbeat_at": "TEXT",
+            "elapsed_ms": "INTEGER NOT NULL DEFAULT 0",
+            "eta_seconds": "REAL",
+        },
         "extraction_batches": {"response_json": "TEXT"},
         "reviews": {
             "status": "TEXT NOT NULL DEFAULT 'active'",
@@ -467,6 +488,7 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "benchmark_json",
         "config_json",
         "metrics_json",
+        "counters_json",
         "vector_json",
     ):
         if key in item:

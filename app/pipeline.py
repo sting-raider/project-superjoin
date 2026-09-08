@@ -7,6 +7,7 @@ import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -30,6 +31,15 @@ from .security import untrusted_document_block, validate_model_claim
 
 EXTRACTION_PROMPT_VERSION = "extraction-v4-compact-hints-bounded-output"
 VISION_PROMPT_VERSION = "vision-v2-grounded"
+
+_STAGE_BANDS = {
+    "parse": (0, 12),
+    "extraction": (12, 62),
+    "grounding": (62, 70),
+    "registry": (70, 82),
+    "relationships": (82, 94),
+    "publication": (94, 100),
+}
 
 
 class _ClaimEnvelope(BaseModel):
@@ -68,14 +78,14 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
     """Process an uploaded PDF with resumable stage updates and deterministic fallback."""
     try:
         started_at = utc_now()
-        _update_run(run_id, 5, "Parsing PDF pages", status="processing")
+        _start_stage(run_id, "parse", 1, "Parsing PDF")
         _raise_if_cancelled(run_id)
         parsed = parse_pdf(data)
         if len(parsed.pages) > settings.max_pdf_pages:
             raise ValueError(f"PDF exceeds the {settings.max_pdf_pages}-page limit")
         _update_document(document_id, page_count=len(parsed.pages), parser=parsed.parser, quality_score=sum(p.quality_score for p in parsed.pages) / max(len(parsed.pages), 1), status="processing")
         _persist_pages(document_id, parsed)
-        _update_run(run_id, 24, f"Parsed {len(parsed.pages)} pages")
+        _finish_stage(run_id, "parse", {"pages": len(parsed.pages)})
         _raise_if_cancelled(run_id)
         all_candidates: list[dict[str, Any]] = []
         for page in parsed.pages:
@@ -86,25 +96,53 @@ def process_document(run_id: str, document_id: str, workspace_id: str, data: byt
                 all_candidates.extend(visual)
         batches = build_extraction_batches(parsed.pages, all_candidates)
         if available("extraction") and batches:
-            all_candidates = _extract_document_batches(
-                batches, filename, run_id, document_id
+            _start_stage(
+                run_id,
+                "extraction",
+                len(batches),
+                f"Extracting 0 of {len(batches)} batches",
             )
+            all_candidates = _extract_document_batches(
+                batches, filename, run_id, document_id, workspace_id
+            )
+            batch_counts = _batch_counts(run_id)
+            _finish_stage(run_id, "extraction", batch_counts)
         _raise_if_cancelled(run_id)
-        _update_run(run_id, 60, f"Grounding {len(all_candidates)} candidate claims")
+        _start_stage(
+            run_id,
+            "grounding",
+            len(all_candidates),
+            f"Grounding {len(all_candidates)} extracted claims",
+        )
         inserted = _insert_claims(workspace_id, document_id, run_id, all_candidates)
+        _finish_stage(
+            run_id,
+            "grounding",
+            {"grounded_claims": inserted, "candidate_claims": len(all_candidates)},
+        )
         _raise_if_cancelled(run_id)
-        register_workspace_claims(workspace_id, run_id)
-        _update_run(run_id, 78, "Resolving relationships")
-        _resolve_workspace(workspace_id, run_id)
+        _start_stage(run_id, "registry", inserted, "Resolving entities and predicates")
+        registered = register_workspace_claims(workspace_id, run_id)
+        _finish_stage(run_id, "registry", {"claims_registered": registered})
+        _start_stage(run_id, "relationships", inserted, "Comparing relevant new claims")
+        from .knowledge import assess_relationships, rebuild_workspace
+
+        relationships = assess_relationships(workspace_id, run_id)
+        _finish_stage(
+            run_id, "relationships", {"relationships_created": relationships}
+        )
+        _start_stage(run_id, "publication", 1, "Publishing committed knowledge revision")
+        rebuild_workspace(workspace_id, run_id)
         _record_knowledge_changes(workspace_id, document_id, run_id, started_at)
-        _update_run(run_id, 94, f"Published {inserted} grounded claims")
+        _finish_stage(run_id, "publication", {"published_claims": inserted})
         _update_document(document_id, status="complete")
-        _update_run(run_id, 100, "Complete", status="complete")
+        _update_stage(run_id, "complete", 1, 1, "Complete", status="complete")
     except _RunCancelled:
         _cancel_run(document_id, run_id)
     except Exception as exc:  # noqa: BLE001 - persist every failed run for inspection
+        _mark_provisional(run_id, "failed")
         _update_document(document_id, status="failed")
-        _update_run(run_id, 100, f"Failed: {exc}", status="failed")
+        _update_stage(run_id, "failed", 1, 1, f"Failed: {exc}", status="failed")
 
 
 def build_extraction_batches(
@@ -214,6 +252,7 @@ def _extract_document_batches(
     filename: str,
     run_id: str,
     document_id: str,
+    workspace_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract batches under a bounded worker pool and durable checkpoints."""
 
@@ -242,6 +281,7 @@ def _extract_document_batches(
                 _model_extract, batch.candidates, filename, run_id, batch.pages
             )
             futures[future] = (batch, digest)
+        completed_count = len(results)
         for future in as_completed(futures):
             _raise_if_cancelled(run_id)
             batch, digest = futures[future]
@@ -271,6 +311,23 @@ def _extract_document_batches(
                     claims,
                 )
             results[batch.index] = claims
+            completed_count += 1
+            if workspace_id and claims:
+                _insert_claims(
+                    workspace_id,
+                    document_id,
+                    run_id,
+                    claims,
+                    publication_state="provisional",
+                )
+            _update_stage(
+                run_id,
+                "extraction",
+                completed_count,
+                len(batches),
+                f"Extracted {completed_count} of {len(batches)} batches",
+                _batch_counts(run_id),
+            )
     return [claim for index in sorted(results) for claim in results[index]]
 
 
@@ -505,15 +562,17 @@ def _claim_value_in_evidence(item: dict[str, Any], evidence_text: str) -> bool:
 
 def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_id: str) -> list[dict[str, Any]]:
     if not available("vision"):
-        _update_run(
+        _record_run_notice(
             run_id,
-            45,
             f"Page {page_index + 1} requires visual review; no vision provider is configured",
         )
         return []
     image = _render_page(pdf_bytes, page_index)
     if not image:
-        _update_run(run_id, 45, f"Page {page_index + 1} requires visual review; renderer unavailable")
+        _record_run_notice(
+            run_id,
+            f"Page {page_index + 1} requires visual review; renderer unavailable",
+        )
         return []
     digest = input_hash(VISION_PROMPT_VERSION, provider_identity("vision", settings.vision_model), filename, str(page_index), hashlib.sha256(image).hexdigest())
     model = settings.vision_model
@@ -538,7 +597,9 @@ def _vision_extract_page(pdf_bytes: bytes, page_index: int, filename: str, run_i
     except (ProviderError, BudgetExceeded) as exc:
         if reservation:
             settle(reservation, 0.0, status="failed", attempts=getattr(exc, "attempts", 1))
-        _update_run(run_id, 45, f"Page {page_index + 1} visual fallback unavailable: {exc}")
+        _record_run_notice(
+            run_id, f"Page {page_index + 1} visual fallback unavailable: {exc}"
+        )
         return []
     if reservation:
         settle(reservation, result.estimated_cost, status="complete", input_tokens=result.input_tokens, output_tokens=result.output_tokens, latency_ms=result.latency_ms, attempts=result.attempts)
@@ -589,7 +650,13 @@ def _render_page(pdf_bytes: bytes, page_index: int) -> bytes | None:
             document.close()
 
 
-def _insert_claims(workspace_id: str, document_id: str, run_id: str, candidates: list[dict[str, Any]]) -> int:
+def _insert_claims(
+    workspace_id: str,
+    document_id: str,
+    run_id: str,
+    candidates: list[dict[str, Any]],
+    publication_state: str = "accepted",
+) -> int:
     inserted = 0
     with db() as conn:
         # Keep the status check and all claim/evidence writes in one SQLite
@@ -603,17 +670,31 @@ def _insert_claims(workspace_id: str, document_id: str, run_id: str, candidates:
             item = _deterministically_normalized(item)
             evidence = item.get("evidence") or {}
             claim_id = _claim_id(workspace_id, document_id, item, evidence)
-            if conn.execute("SELECT 1 FROM claims WHERE id=?", (claim_id,)).fetchone():
+            existing = conn.execute(
+                "SELECT extraction_status FROM claims WHERE id=?", (claim_id,)
+            ).fetchone()
+            if existing:
+                if (
+                    publication_state == "accepted"
+                    and existing["extraction_status"] == "provisional"
+                ):
+                    conn.execute(
+                        "UPDATE claims SET extraction_status='accepted' WHERE id=?",
+                        (claim_id,),
+                    )
+                    inserted += 1
                 continue
             created_at = utc_now()
             suspicious = bool(item.get("security_flags") or evidence.get("security_flags")) or not validate_model_claim({**item, "evidence": evidence})
             grounding_status = "quarantined" if suspicious or not evidence else "grounded"
-            extraction_status = "quarantined" if suspicious or not evidence else "accepted"
+            extraction_status = (
+                "quarantined" if suspicious or not evidence else publication_state
+            )
             conn.execute(
                 """INSERT INTO claims
-                (id,workspace_id,document_id,subject,predicate,raw_value,normalized_value,value_type,unit,precision,period,modality,scope,evidence_json,grounding_status,extraction_status,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (claim_id, workspace_id, document_id, str(item.get("subject") or "Document subject"), str(item.get("predicate") or "unknown_predicate"), str(item.get("raw_value") or ""), _json_value(item.get("normalized_value")), str(item.get("value_type") or "text"), item.get("unit"), item.get("precision"), item.get("period"), item.get("modality"), item.get("scope"), json.dumps(evidence), grounding_status, extraction_status, created_at),
+                (id,workspace_id,document_id,run_id,subject,predicate,raw_value,normalized_value,value_type,unit,precision,period,modality,scope,evidence_json,grounding_status,extraction_status,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (claim_id, workspace_id, document_id, run_id, str(item.get("subject") or "Document subject"), str(item.get("predicate") or "unknown_predicate"), str(item.get("raw_value") or ""), _json_value(item.get("normalized_value")), str(item.get("value_type") or "text"), item.get("unit"), item.get("precision"), item.get("period"), item.get("modality"), item.get("scope"), json.dumps(evidence), grounding_status, extraction_status, created_at),
             )
             conn.execute("INSERT INTO claims_fts(claim_id,workspace_id,subject,predicate,raw_value,period,modality,scope) VALUES(?,?,?,?,?,?,?,?)", (claim_id, workspace_id, item.get("subject", ""), item.get("predicate", ""), item.get("raw_value", ""), item.get("period") or "", item.get("modality") or "", item.get("scope") or ""))
             if evidence:
@@ -694,11 +775,157 @@ def _record_model_call(run_id: str, role: str, model: str, digest: str, status: 
             conn.execute("UPDATE budget_ledger SET spent_usd=spent_usd+?, updated_at=? WHERE id=1", (cost, utc_now()))
 
 
-def _update_run(run_id: str, progress: int, message: str, status: str | None = None) -> None:
+def _record_run_notice(run_id: str, message: str) -> None:
     with db() as conn:
         updated_at = utc_now()
-        conn.execute("UPDATE runs SET progress=?,message=?,updated_at=?" + (",status=?" if status else "") + " WHERE id=?", (progress, message, updated_at, *( [status] if status else []), run_id))
-        conn.execute("INSERT INTO run_events(run_id,event_type,progress,message,details_json,created_at) VALUES(?,?,?,?,?,?)", (run_id, status or "progress", progress, message, "{}", updated_at))
+        row = conn.execute(
+            "SELECT progress FROM runs WHERE id=?", (run_id,)
+        ).fetchone()
+        progress = int(row["progress"]) if row else 0
+        conn.execute(
+            "UPDATE runs SET message=?,updated_at=?,heartbeat_at=? WHERE id=?",
+            (message, updated_at, updated_at, run_id),
+        )
+        conn.execute(
+            "INSERT INTO run_events(run_id,event_type,progress,message,details_json,created_at) VALUES(?,?,?,?,?,?)",
+            (run_id, "notice", progress, message, "{}", updated_at),
+        )
+
+
+def _start_stage(run_id: str, stage: str, total: int, message: str) -> None:
+    now = utc_now()
+    with db() as conn:
+        conn.execute(
+            """INSERT INTO run_stage_timings
+            (run_id,stage,started_at,current_count,total_count,counters_json)
+            VALUES(?,?,?,?,?,?)
+            ON CONFLICT(run_id,stage) DO UPDATE SET
+              started_at=excluded.started_at,completed_at=NULL,duration_ms=NULL,
+              current_count=excluded.current_count,total_count=excluded.total_count,
+              counters_json=excluded.counters_json""",
+            (run_id, stage, now, 0, max(0, total), "{}"),
+        )
+    _update_stage(run_id, stage, 0, total, message, status="processing")
+
+
+def _stage_progress(stage: str, current: int, total: int) -> int:
+    start, end = _STAGE_BANDS.get(stage, (0, 100))
+    ratio = min(1.0, max(0.0, current / max(total, 1)))
+    return min(100, round(start + (end - start) * ratio))
+
+
+def _update_stage(
+    run_id: str,
+    stage: str,
+    current: int,
+    total: int,
+    message: str,
+    counters: dict[str, Any] | None = None,
+    status: str | None = None,
+) -> None:
+    now = utc_now()
+    details = counters or {}
+    with db() as conn:
+        run = conn.execute(
+            "SELECT created_at FROM runs WHERE id=?", (run_id,)
+        ).fetchone()
+        timing = conn.execute(
+            "SELECT started_at FROM run_stage_timings WHERE run_id=? AND stage=?",
+            (run_id, stage),
+        ).fetchone()
+        elapsed_ms = (
+            round(
+                (datetime.fromisoformat(now) - datetime.fromisoformat(run["created_at"])).total_seconds()
+                * 1000
+            )
+            if run
+            else 0
+        )
+        eta_seconds = None
+        if timing and current > 0 and total > current:
+            stage_elapsed = (
+                datetime.fromisoformat(now) - datetime.fromisoformat(timing["started_at"])
+            ).total_seconds()
+            eta_seconds = round((stage_elapsed / current) * (total - current), 1)
+        progress = 100 if status in {"complete", "failed", "cancelled"} else _stage_progress(stage, current, total)
+        conn.execute(
+            """UPDATE runs SET progress=?,message=?,updated_at=?,stage=?,
+            stage_current=?,stage_total=?,counters_json=?,heartbeat_at=?,
+            elapsed_ms=?,eta_seconds=?"""
+            + (",status=?" if status else "")
+            + " WHERE id=?",
+            (
+                progress,
+                message,
+                now,
+                stage,
+                max(0, current),
+                max(0, total),
+                json.dumps(details, ensure_ascii=False),
+                now,
+                elapsed_ms,
+                eta_seconds,
+                *([status] if status else []),
+                run_id,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO run_events(run_id,event_type,progress,message,details_json,created_at) VALUES(?,?,?,?,?,?)",
+            (run_id, stage, progress, message, json.dumps(details), now),
+        )
+        if timing:
+            conn.execute(
+                "UPDATE run_stage_timings SET current_count=?,total_count=?,counters_json=? WHERE run_id=? AND stage=?",
+                (current, total, json.dumps(details), run_id, stage),
+            )
+
+
+def _finish_stage(run_id: str, stage: str, counters: dict[str, Any]) -> None:
+    now = utc_now()
+    with db() as conn:
+        timing = conn.execute(
+            "SELECT started_at,total_count FROM run_stage_timings WHERE run_id=? AND stage=?",
+            (run_id, stage),
+        ).fetchone()
+        if not timing:
+            return
+        duration_ms = round(
+            (datetime.fromisoformat(now) - datetime.fromisoformat(timing["started_at"])).total_seconds()
+            * 1000
+        )
+        total = int(timing["total_count"])
+        conn.execute(
+            """UPDATE run_stage_timings SET completed_at=?,duration_ms=?,
+            current_count=?,counters_json=? WHERE run_id=? AND stage=?""",
+            (now, duration_ms, total, json.dumps(counters), run_id, stage),
+        )
+    _update_stage(run_id, stage, total, total, f"{stage.title()} complete", counters)
+
+
+def _batch_counts(run_id: str) -> dict[str, Any]:
+    with db() as conn:
+        row = conn.execute(
+            """SELECT COUNT(*) AS batches,
+            SUM(CASE WHEN status='complete' THEN 1 ELSE 0 END) AS completed,
+            SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+            SUM(claim_count) AS claims FROM extraction_batches WHERE run_id=?""",
+            (run_id,),
+        ).fetchone()
+        calls = conn.execute(
+            """SELECT COUNT(*) AS calls,SUM(COALESCE(cache_hit,0)) AS cache_hits,
+            SUM(CASE WHEN attempts>1 THEN attempts-1 ELSE 0 END) AS retries
+            FROM model_calls WHERE run_id=? AND role='extraction'""",
+            (run_id,),
+        ).fetchone()
+    return {**dict(row), **dict(calls)}
+
+
+def _mark_provisional(run_id: str, state: str) -> None:
+    with db() as conn:
+        conn.execute(
+            "UPDATE claims SET extraction_status=? WHERE run_id=? AND extraction_status='provisional'",
+            (state, run_id),
+        )
 
 
 def _update_document(document_id: str, **fields: Any) -> None:
@@ -721,8 +948,16 @@ def _raise_if_cancelled(run_id: str) -> None:
 
 
 def _cancel_run(document_id: str, run_id: str) -> None:
+    _mark_provisional(run_id, "cancelled")
     _update_document(document_id, status="cancelled")
-    _update_run(run_id, 100, "Cancelled before publication", status="cancelled")
+    _update_stage(
+        run_id,
+        "cancelled",
+        1,
+        1,
+        "Cancelled before publication",
+        status="cancelled",
+    )
 
 
 def _record_knowledge_changes(workspace_id: str, document_id: str, run_id: str, started_at: str) -> None:

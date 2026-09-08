@@ -118,6 +118,14 @@ def test_truncated_extraction_is_not_published_as_deterministic_hints(
         with db() as conn:
             conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES('w','W',?)", (now,))
             conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES('d','w','x.pdf','h','processing',?)", (now,))
+            conn.execute(
+                """INSERT INTO page_artifacts
+                (id,document_id,page_number,width,height,native_text,parser,
+                parser_version,quality_score,created_at)
+                VALUES('page-d-1','d',1,100,100,'ARR reached $42 million.',
+                'test','1',1.0,?)""",
+                (now,),
+            )
             conn.execute("INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES('r','w','d','live','processing',0,'',?,?)", (now, now))
 
         claims = _extract_document_batches([batch], "x.pdf", "r", "d")
@@ -211,6 +219,65 @@ def test_completed_extraction_batch_is_reused_without_provider_call(monkeypatch,
         object.__setattr__(settings, "upload_dir", original_upload)
 
 
+def test_completed_batches_publish_provisional_claims_before_commit(
+    monkeypatch, tmp_path: Path
+) -> None:
+    original_database = settings.database_path
+    object.__setattr__(settings, "database_path", tmp_path / "provisional.sqlite3")
+    extracted = [
+        {
+            "subject": "Nimbus Cloud",
+            "predicate": "annual_recurring_revenue",
+            "raw_value": "$42 million",
+            "value_type": "money",
+            "unit": "USD",
+            "period": "FY26",
+            "evidence": {"pdf_page": 1, "text": "ARR reached $42 million."},
+        }
+    ]
+    batch = ExtractionBatch(
+        index=0,
+        pages=[{"pdf_page": 1, "section": 0, "start": 0, "text": "ARR reached $42 million."}],
+        candidates=[],
+    )
+    try:
+        init_db()
+        now = utc_now()
+        with db() as conn:
+            conn.execute("INSERT INTO workspaces(id,name,created_at) VALUES('w','W',?)", (now,))
+            conn.execute("INSERT INTO documents(id,workspace_id,name,sha256,status,created_at) VALUES('d','w','x.pdf','h','processing',?)", (now,))
+            conn.execute(
+                """INSERT INTO page_artifacts
+                (id,document_id,page_number,width,height,native_text,parser,
+                parser_version,quality_score,created_at)
+                VALUES('page-d-1','d',1,100,100,'ARR reached $42 million.',
+                'test','1',1.0,?)""",
+                (now,),
+            )
+            conn.execute("INSERT INTO runs(id,workspace_id,document_id,mode,status,progress,message,created_at,updated_at) VALUES('r','w','d','live','processing',0,'',?,?)", (now, now))
+        monkeypatch.setattr("app.pipeline._model_extract", lambda *args: extracted)
+
+        claims = _extract_document_batches([batch], "x.pdf", "r", "d", "w")
+
+        assert claims == extracted
+        with db() as conn:
+            provisional = conn.execute(
+                "SELECT run_id,extraction_status FROM claims WHERE document_id='d'"
+            ).fetchone()
+            facts = conn.execute("SELECT COUNT(*) AS n FROM facts").fetchone()["n"]
+        assert dict(provisional) == {"run_id": "r", "extraction_status": "provisional"}
+        assert facts == 0
+
+        assert _insert_claims("w", "d", "r", extracted) == 1
+        with db() as conn:
+            status = conn.execute(
+                "SELECT extraction_status FROM claims WHERE document_id='d'"
+            ).fetchone()["extraction_status"]
+        assert status == "accepted"
+    finally:
+        object.__setattr__(settings, "database_path", original_database)
+
+
 def test_model_numeric_normalization_is_recomputed_deterministically() -> None:
     model_claim = {
         "raw_value": "$42 million",
@@ -228,7 +295,7 @@ def test_model_numeric_normalization_is_recomputed_deterministically() -> None:
 def test_no_key_visual_fallback_does_not_render(monkeypatch) -> None:
     monkeypatch.setattr("app.pipeline.available", lambda role=None: False)
     monkeypatch.setattr(
-        "app.pipeline._update_run", lambda *args, **kwargs: None
+        "app.pipeline._record_run_notice", lambda *args, **kwargs: None
     )
 
     def render_must_not_run(*args, **kwargs):

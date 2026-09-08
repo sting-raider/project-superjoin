@@ -245,6 +245,21 @@ def test_reasoning_role_can_resolve_deterministic_context_abstention(monkeypatch
         object.__setattr__(settings, "upload_dir", original_upload)
 
 
+def test_temporal_status_change_is_a_semantic_review_candidate() -> None:
+    from app.knowledge import _needs_semantic_relationship_review
+
+    appointed = {
+        "value_type": "semantic",
+        "evidence_json": json.dumps({"text": "Morgan Lee was appointed as COO."}),
+    }
+    resigned = {
+        "value_type": "semantic",
+        "evidence_json": json.dumps({"text": "Morgan Lee resigned with effect from 1 June."}),
+    }
+
+    assert _needs_semantic_relationship_review(appointed, resigned, "UNRELATED")
+
+
 def test_incremental_relationships_only_rank_prior_documents() -> None:
     new = {
         "id": "new",

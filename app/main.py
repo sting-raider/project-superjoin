@@ -224,6 +224,37 @@ def run_model_calls(run_id: str) -> dict[str, Any]:
     return {"run_id": run_id, "items": rows_to_dicts(rows)}
 
 
+@app.get("/api/v1/runs/{run_id}/stages")
+def run_stages(run_id: str) -> dict[str, Any]:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM run_stage_timings WHERE run_id=? ORDER BY started_at,stage",
+            (run_id,),
+        ).fetchall()
+    return {"run_id": run_id, "items": rows_to_dicts(rows)}
+
+
+@app.get("/api/v1/runs/{run_id}/provisional-claims")
+def provisional_claims(run_id: str) -> dict[str, Any]:
+    with db() as conn:
+        run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if not run:
+            raise HTTPException(404, "Run not found")
+        rows = conn.execute(
+            """SELECT id,document_id,subject,predicate,raw_value,normalized_value,
+            value_type,unit,period,modality,scope,evidence_json,grounding_status,
+            extraction_status,created_at FROM claims
+            WHERE run_id=? AND extraction_status='provisional' ORDER BY created_at,id""",
+            (run_id,),
+        ).fetchall()
+    return {
+        "run_id": run_id,
+        "committed": False,
+        "trust_gate_eligible": False,
+        "items": rows_to_dicts(rows),
+    }
+
+
 @app.get("/api/v1/runs")
 def runs(workspace_id: str | None = None, limit: int = 50) -> dict[str, Any]:
     workspace_id = _workspace_or_default(workspace_id)

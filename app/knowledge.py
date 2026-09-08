@@ -25,6 +25,17 @@ _CONTEXTUAL_RELATIONSHIP_MARKERS = (
     "vintage",
 )
 
+_TEMPORAL_STATUS_MARKERS = (
+    "appointed",
+    "effective from",
+    "left the board",
+    "no longer",
+    "resigned",
+    "retired",
+    "terminated",
+    "with effect from",
+)
+
 
 def _id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
@@ -220,7 +231,12 @@ def _needs_semantic_relationship_review(a: Any, b: Any, relationship_type: str) 
     has_context_marker = any(
         marker in evidence for marker in _CONTEXTUAL_RELATIONSHIP_MARKERS
     )
-    return relationship_type in {"CONTRADICTS", "UNRELATED"} and has_context_marker
+    has_temporal_status_marker = any(
+        marker in evidence for marker in _TEMPORAL_STATUS_MARKERS
+    )
+    return relationship_type in {"CONTRADICTS", "UNRELATED"} and (
+        has_context_marker or has_temporal_status_marker
+    )
 
 
 def _evidence_items(value: Any) -> list[dict[str, Any]]:
