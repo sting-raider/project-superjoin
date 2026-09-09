@@ -74,8 +74,7 @@ See `docs/DATASET_REDISTRIBUTION.md` for the publication boundary.
 
 ## Video Demo
 
-The project owner will add the final live-product walkthrough link here after
-recording it. The repository contains no preloaded workspace, source, fact,
+The project owner has recorded the video and provided the link in the google forms. The repository contains no preloaded workspace, source, fact,
 relationship, provider response, or video asset.
 
 ## Approach and Trade-offs
